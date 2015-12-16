@@ -196,7 +196,6 @@ class Bot(discord.Client):
         server = args[0]
         channel = args[1]
         message.content = ", ".join(args[2:])
-        self.send_typing(message.channel)
         chan = self.channels[self.servs[server]][channel]
         self.send_typing(chan)
         self.send_message(chan, message.content)
