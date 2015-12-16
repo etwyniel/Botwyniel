@@ -37,7 +37,7 @@ class Bot(discord.Client):
                          "!send": self.send,
                          "!kill": self.kill,
                          "!fc": self.free_champs,
-                         "!py": self.exec,
+                         "!py": self.execute,
                          "!help": self.help,
                          "!join": self.join_server,
                          "!restart": self.restart
@@ -228,7 +228,7 @@ class Bot(discord.Client):
         )
         self.send_message(message.channel, to_send)
 
-    def exec(self, message):
+    def execute(self, message):
         if not self.author_is_admin(message):
             self.send_message(message.channel, "This is an admin-only command.")
             return None
