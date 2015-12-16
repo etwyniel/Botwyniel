@@ -1,0 +1,2 @@
+# Botwyniel
+Discord bot
