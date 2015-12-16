@@ -1,1 +1,1 @@
-web: python Botwyniel.py
+worker: python Botwyniel.py
