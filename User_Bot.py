@@ -5,6 +5,11 @@ from time import sleep
 from Bot import Bot
 from RiotAPI import log
 
+"""
+Rename this file with the name of your bot, or !restart won't work.
+Additionally, you can set name, email and password to their values directly, instead of having to type them every time.
+"""
+
 # Set up the logging module to output diagnostic to the console.
 logging.basicConfig()
 
