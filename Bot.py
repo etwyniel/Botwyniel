@@ -1,10 +1,9 @@
 import threading
-from datetime import datetime
-from os import system, chdir
+from datetime import datetime, date
 from time import sleep
 
 import discord
-from RiotAPI import RiotAPI, log
+from RiotAPI import RiotAPI
 from discord.client import ConnectionState
 
 
@@ -39,8 +38,7 @@ class Bot(discord.Client):
                          "!fc": self.free_champs,
                          "!py": self.execute,
                          "!help": self.help,
-                         "!join": self.join_server,
-                         "!restart": self.restart
+                         "!join": self.join_server
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -73,7 +71,7 @@ class Bot(discord.Client):
         self.send_typing(message.channel)
         self.send_message(message.channel, self.uptime(message))
 
-    def log(self, ignore):
+    def connect(self, ignore):
         print("Logging in...")
         self.login(self.username, self.password)
         if not self.is_logged_in:
@@ -234,7 +232,7 @@ class Bot(discord.Client):
         try:
             exec(self.truncate(message.content))
         except Exception as e:
-            log(str(e))
+            self.log(str(e))
             self.send_message(message.channel, "Error occured: " + str(e))
 
     def help(self, message):
@@ -255,8 +253,9 @@ class Bot(discord.Client):
         else:
             self.send_message(message.author, "Unknown command.")
 
-    def restart(self, message):
-        if self.author_is_admin(message) and message.server.name == "Etwyniel's":
-            chdir('..')
-            system("call start {}.py".format(self.name))
-            exit(1)
+    def log(self, event):
+        channel = self.channels[self.servs["Etwyniel's"]]["logs"]
+        to_send = "[{date}] - *{time}*\n{event}".format(date=str(date.today()), time="".join(str(datetime.now().time(
+
+        )).split(".")[0])[0:5], event=event)
+        self.send_message(channel, to_send)

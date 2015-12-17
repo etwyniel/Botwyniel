@@ -1,24 +1,5 @@
 import requests
 import RiotConsts as Consts
-from datetime import datetime, date
-import os
-
-if not os.path.isdir("logs"):
-    os.makedirs("logs")
-os.chdir("logs")
-
-
-def log(event):
-    log = open("{date}.dat".format(
-    date=str(date.today())
-    ),
-               "a")
-    log.write("[{time}] {event}\n\n".format(
-        time="".join(str(datetime.now().time()).split(".")[0])[0:5],
-        event=str(event)
-        )
-    )
-    log.close()
 
 
 class RiotAPI(object):
@@ -41,13 +22,7 @@ class RiotAPI(object):
             )
 
         a = response
-        log(str(Consts.URL["base"].format(
-                proxy=self.region,
-                region=self.region,
-                url=api_url
-                )
-                ) + " " + str(a)
-            )
+
         return response.json()
 
     def get_summoner_by_name(self, name):
@@ -90,16 +65,6 @@ class RiotAPI(object):
                 ),
             params=args
             )
-        
-        a = response
-        log(str(Consts.URL["current_game"].format(
-                proxy=self.region,
-                platformId=Consts.PLATFORM_IDS[self.region],
-                summonerId=summonerId
-                )
-                ) + " " + str(a)
-            )
-        a = response
 
         if str(response) == "<Response [200]>":
             print("Request OK.")
