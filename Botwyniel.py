@@ -38,9 +38,4 @@ def on_ready():
     botwyniel.log("Botwyniel initialized")
 
 
-@botwyniel.event
-def on_member_join(user):
-    botwyniel.log(user.name + ' has joined ' + user.server.name)
-    print(user.name + ' has joined ' + user.server.name)
-
 botwyniel.run()
