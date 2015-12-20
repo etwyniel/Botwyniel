@@ -1,6 +1,7 @@
 import logging
 
 from Bot import Bot
+from DiscordGames import GAMES
 
 # Set up the logging module to output diagnostic to the console.
 logging.basicConfig()

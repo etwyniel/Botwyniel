@@ -5,6 +5,7 @@ from time import sleep
 import discord
 from RiotAPI import RiotAPI
 from discord.client import ConnectionState
+from DiscordGames import GAMES
 
 
 class Bot(discord.Client):
@@ -80,7 +81,11 @@ class Bot(discord.Client):
 
     def status(self, message):
         message = self.truncate(message.content)
-        self.change_status(int(message))
+        if message in GAMES:
+            print("ok")
+            self.change_status(GAMES[message])
+        else:
+            self.change_status(int(message))
 
     @staticmethod
     def truncate(message):
