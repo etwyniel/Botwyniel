@@ -20,6 +20,7 @@ class Bot(discord.Client):
         self.servs = {}
         self.channels = {}
         self.name = name
+        self.whitelist = kwargs["wl"]
 
         # the actual headers for the request...
         # we only override 'authorization' since the rest could use the defaults.
@@ -104,12 +105,16 @@ class Bot(discord.Client):
             region = 'euw'
         return username, region
 
-    @staticmethod
-    def author_is_admin(message):
-        roles = []
-        for r in message.author.roles:
-            roles.append(r.name)
-        return "admin" in roles
+    def author_is_admin(self, message):
+        if type(message.author) == discord.Member:
+            if message.channel.server.name == "Etwyniel's":
+                roles = []
+                for r in message.author.roles:
+                    roles.append(r.name)
+                return "admin" in roles
+        elif message.author.name in self.whitelist:
+            return True
+        else: return False
 
     def join_server(self, message):
         url = self.truncate(message.content)
@@ -175,10 +180,10 @@ class Bot(discord.Client):
             )
                               )
             return None
-
+        
         to_send = "**Blue team**:\n"
         for player in ranks:
-            if ranks.index(player) == 5:
+            if ranks.index(player) == len(ranks)/2:
                 to_send += "\n**Red team**:\n"
             if player[2] == "unranked":
                 to_send += "{name} (**{champion}**): Unranked\n".format(
@@ -204,15 +209,7 @@ class Bot(discord.Client):
         self.send_message(chan, message.content)
 
     def kill(self, message):
-        if message.author.name == "Jhysodif":
-            self.send_message(message.channel,
-                              "Y u do dis {user} :astonished: ({uptime})".format(user=message.author.name,
-                                                                                 uptime=self.uptime(message)))
-            self.logout()
-            sleep(5)
-            self.log(0)
-            self.send_message(message.author, "Screw you!")
-        elif self.author_is_admin(message) and message.server.name == "Etwyniel's":
+        if self.author_is_admin(message):
             self.send_message(message.channel,
                               "Y u do dis {user} :astonished: ({uptime})".format(user=message.author.name,
                                                                                  uptime=self.uptime(message)))

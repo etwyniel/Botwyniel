@@ -83,7 +83,9 @@ class RiotAPI(object):
                 playerNames = playerNames + [player["summonerName"]]
                 playerChamps = [player["summonerName"], Consts.CHAMPIONS_BY_ID[player["championId"]]] + playerChamps
             players[player["summonerName"]] = str(player["summonerId"])
-        playerIds = list(players.values())
+        playerIds = {}
+        for player in players:
+            playerIds[players[player]] = player
         api_url = Consts.URL["league"].format(
             version=Consts.API_VERSIONS["league"],
             summonerId=",".join(playerIds)
@@ -94,12 +96,15 @@ class RiotAPI(object):
         for player in range(0, len(playerChamps), 2):
             r.append([playerChamps[player]])
             r[int(player/2)].append(playerChamps[player+1])
-        for Id in playerIds:
+
+        for Id in playerIds.keys():
             try:
-                r[playerNames.index(ranks[Id][0]["entries"][0]["playerOrTeamName"])].append(ranks[Id][0]["tier"])
-                r[playerNames.index(ranks[Id][0]["entries"][0]["playerOrTeamName"])].append(ranks[Id][0]["entries"][0]["division"])
-            except:
-                r[playerNames.index(ranks[Id][0]["entries"][0]["playerOrTeamName"])].append("unranked")
+                for queue in ranks[Id]:
+                    if queue['queue'] == 'RANKED_SOLO_5x5':
+                        r[int(playerChamps.index(queue["entries"][0]["playerOrTeamName"])/2)].append(queue["tier"])
+                        r[int(playerChamps.index(queue["entries"][0]["playerOrTeamName"])/2)].append(queue["entries"][0]["division"])
+            except Exception as e:
+                r[int(playerChamps.index(playerIds[Id])/2)].append("unranked")
         return r
 
     def get_free_champions(self):

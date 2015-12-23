@@ -6,12 +6,14 @@ from DiscordGames import GAMES
 # Set up the logging module to output diagnostic to the console.
 logging.basicConfig()
 
-botwyniel = Bot('etwyspam@gmail.com', 'almg0308')
+botwyniel = Bot('etwyspam@gmail.com', 'almg0308', wl=["Etwyniel", "Jhysodif"])
 botwyniel.connect(0)
 
 if not botwyniel.is_logged_in:
     print("Logging in to Discord failed")
     exit(1)
+
+whitelist = ["Etwyniel", "Jhysodif"]
 
 
 @botwyniel.event
