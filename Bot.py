@@ -9,6 +9,11 @@ from DiscordGames import GAMES
 
 
 class Bot(discord.Client):
+    """
+    Bot object that inherits from the Client object of discord.py
+    Mostly designed for League of Legends.
+    """
+    
     def __init__(self, username, password, name="Botwyniel", **kwargs):
         self.init_time = datetime.now()
         self._is_logged_in = False

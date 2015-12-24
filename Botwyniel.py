@@ -6,16 +6,19 @@ from DiscordGames import GAMES
 # Set up the logging module to output diagnostic to the console.
 logging.basicConfig()
 
+#bot created as a Bot object , taking an email address, a password
+#and an optionnal whitelist of people allowed to use certain commands.
 botwyniel = Bot('etwyspam@gmail.com', 'almg0308', wl=["Etwyniel", "Jhysodif"])
+#bot attempts to connect, exits in case of failure
 botwyniel.connect(0)
 
 if not botwyniel.is_logged_in:
     print("Logging in to Discord failed")
     exit(1)
 
-whitelist = ["Etwyniel", "Jhysodif"]
 
-
+#bot waits for a message containing a command starting with "!", and executes the
+#corresponding function.
 @botwyniel.event
 def on_message(message):
     if message.content.startswith('!'):
@@ -24,9 +27,10 @@ def on_message(message):
             botwyniel.commands[message.content.split(" ")[0]](message)
 
 
+#Upon logging in, bot prints the names of the servers it is connected to in the console
 @botwyniel.event
 def on_ready():
-    botwyniel.change_status(443)
+    #botwyniel.change_status("Undertale")
     print('Logged in as ' + botwyniel.user.name)
 
     print("\nAvailable servers:")
@@ -41,4 +45,5 @@ def on_ready():
     botwyniel.log("Botwyniel initialized")
 
 
+#Main function of the bot.
 botwyniel.run()
