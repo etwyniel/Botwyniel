@@ -30,7 +30,7 @@ def on_message(message):
 #Upon logging in, bot prints the names of the servers it is connected to in the console
 @botwyniel.event
 def on_ready():
-    #botwyniel.change_status("Undertale")
+    botwyniel.status("Undertale")
     print('Logged in as ' + botwyniel.user.name)
 
     print("\nAvailable servers:")

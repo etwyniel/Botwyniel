@@ -86,12 +86,16 @@ class Bot(discord.Client):
             exit(1)
 
     def status(self, message):
-        message = self.truncate(message.content)
-        if message in GAMES:
-            print("ok")
-            self.change_status(GAMES[message])
+        if type(message) == discord.Message:
+            message.content = self.truncate(message.content)
+            if message.content in GAMES:
+                game = discord.Game(name=message.content)
+                self.change_status(game)
+            else:
+                self.send_message(message.channel, "Invalid game name.")
         else:
-            self.change_status(int(message))
+            game = discord.Game(name=message)
+            self.change_status(game)
 
     @staticmethod
     def truncate(message):
