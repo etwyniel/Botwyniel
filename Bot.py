@@ -5,7 +5,6 @@ from time import sleep
 import discord
 from RiotAPI import RiotAPI
 from discord.client import ConnectionState
-from DiscordGames import GAMES
 
 
 class Bot(discord.Client):
@@ -88,11 +87,8 @@ class Bot(discord.Client):
     def status(self, message):
         if type(message) == discord.Message:
             message.content = self.truncate(message.content)
-            if message.content in GAMES:
-                game = discord.Game(name=message.content)
-                self.change_status(game)
-            else:
-                self.send_message(message.channel, "Invalid game name.")
+            game = discord.Game(name=message.content)
+            self.change_status(game)
         else:
             game = discord.Game(name=message)
             self.change_status(game)
