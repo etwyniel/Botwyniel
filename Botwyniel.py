@@ -1,4 +1,5 @@
 import logging
+from os import environ as en
 
 from Bot import Bot
 
@@ -7,7 +8,7 @@ logging.basicConfig()
 
 #bot created as a Bot object , taking an email address, a password
 #and an optionnal whitelist of people allowed to use certain commands.
-botwyniel = Bot('etwyspam@gmail.com', 'almg0308', wl=["Etwyniel", "Jhysodif"])
+botwyniel = Bot(en["EMAIL"], en["PASSWORD"], wl=["Etwyniel", "Jhysodif"])
 #bot attempts to connect, exits in case of failure
 botwyniel.connect(0)
 
@@ -29,7 +30,7 @@ def on_message(message):
 #Upon logging in, bot prints the names of the servers it is connected to in the console
 @botwyniel.event
 def on_ready():
-    botwyniel.status("Undertale")
+    botwyniel.status(en["default_game"])
     print('Logged in as ' + botwyniel.user.name)
 
     print("\nAvailable servers:")
