@@ -48,7 +48,8 @@ class Bot(discord.Client):
                          "!join": self.join_server,
                          "!ytlatest": self.latest_videos,
                          "!ytsearch": self.search_video,
-                         "!ytthumbnail": self.get_thumbnail
+                         "!ytthumbnail": self.get_thumbnail,
+                         "!avatar": self.avatar
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -66,7 +67,8 @@ class Bot(discord.Client):
                               "!join": "Makes the bot accept an instant invite (http://discord.gg/xxxxxxxx).",
                               "!ytsearch": "Sends the URL of the first corresponding youtube video.",
                               "!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
-                              "!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video."
+                              "!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
+                              "!avatar": "Sends the URL of the mentionned user's avatar"
                               }
 
     def uptime(self, ignore):
@@ -99,6 +101,13 @@ class Bot(discord.Client):
         else:
             game = discord.Game(name=message)
             self.change_status(game)
+
+    def avatar(self, message):
+        try:
+            for user in message.mentions:
+                self.send_message(message.channel, user.avatar_url())
+        except discord.errors.HTTPException:
+            self.send_message(message.channel, "This user does not have an avatar.")
 
     @staticmethod
     def truncate(message):
@@ -214,17 +223,26 @@ class Bot(discord.Client):
     def latest_videos(self, message):
         username = self.truncate(message.content)
         yt = YoutubeAPI(username)
-        self.send_message(message.channel, yt.latest_vids())
+        try:
+            self.send_message(message.channel, yt.latest_vids())
+        except IndexError:
+            self.send_message(message.channel, "The {} channel does not seem to exist.".format(username))
 
     def search_video(self, message):
         query = self.truncate(message.content)
         yt = YoutubeAPI(query)
-        self.send_message(message.channel, yt.search_video())
+        try:
+            self.send_message(message.channel, yt.search_video())
+        except IndexError:
+            self.send_message(message.channel, "No video found matching this query.")
 
     def get_thumbnail(self, message):
         query = self.truncate(message.content)
         yt = YoutubeAPI(query)
-        self.send_message(message.channel, yt.get_thumbnail())
+        try:
+            self.send_message(message.channel, yt.get_thumbnail())
+        except IndexError:
+            self.send_message(message.channel, "No video found matching this query.")
 
     def send(self, message):
         args = self.truncate(message.content).split(", ")
@@ -269,6 +287,7 @@ class Bot(discord.Client):
             self.send_message(message.author, "The available commands are:\n\
             **!rank** *username*, *region*\*\n\
             **!gameranks** *username*, *region*\*\n\
+            **!avatar** @*user*\n\
             **!ytsearch** *query*\n\
             **!ytlatest** *channel name*\n\
             **!ytthumbnail** *query*\n\
