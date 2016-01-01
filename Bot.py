@@ -4,6 +4,7 @@ from time import sleep
 
 import discord
 from RiotAPI import RiotAPI
+from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
 
 
@@ -44,7 +45,10 @@ class Bot(discord.Client):
                          "!fc": self.free_champs,
                          "!py": self.execute,
                          "!help": self.help,
-                         "!join": self.join_server
+                         "!join": self.join_server,
+                         "!ytlatest": self.latest_videos,
+                         "!ytsearch": self.search_video,
+                         "!ytthumbnail": self.get_thumbnail
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -59,7 +63,10 @@ class Bot(discord.Client):
                               "!fc": "Returns this week's free champions.",
                               "!py": "Executes a python command or block of code. Admin-only.",
                               "!help": "...really?",
-                              "!join": "Makes the bot accept an instant invite (http://discord.gg/xxxxxxxx)."
+                              "!join": "Makes the bot accept an instant invite (http://discord.gg/xxxxxxxx).",
+                              "!ytsearch": "Sends the URL of the first corresponding youtube video.",
+                              "!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
+                              "!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video."
                               }
 
     def uptime(self, ignore):
@@ -204,6 +211,21 @@ class Bot(discord.Client):
                 )
         self.send_message(message.channel, to_send)
 
+    def latest_videos(self, message):
+        username = self.truncate(message.content)
+        yt = YoutubeAPI(username)
+        self.send_message(message.channel, yt.latest_vids())
+
+    def search_video(self, message):
+        query = self.truncate(message.content)
+        yt = YoutubeAPI(query)
+        self.send_message(message.channel, yt.search_video())
+
+    def get_thumbnail(self, message):
+        query = self.truncate(message.content)
+        yt = YoutubeAPI(query)
+        self.send_message(message.channel, yt.get_thumbnail())
+
     def send(self, message):
         args = self.truncate(message.content).split(", ")
         server = args[0]
@@ -247,6 +269,9 @@ class Bot(discord.Client):
             self.send_message(message.author, "The available commands are:\n\
             **!rank** *username*, *region*\*\n\
             **!gameranks** *username*, *region*\*\n\
+            **!ytsearch** *query*\n\
+            **!ytlatest** *channel name*\n\
+            **!ytthumbnail** *query*\n\
             **!uptime**\n\
             **!send** *server*, *channel*, message\n\
             **!fc**\n\
