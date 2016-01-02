@@ -42,7 +42,8 @@ class RiotAPI(object):
         tier = league[str(summonerId)][0]["tier"]
         division = league[str(summonerId)][0]["entries"][0]["division"]
         lp = league[str(summonerId)][0]["entries"][0]["leaguePoints"]
-        return [tier, division, lp]
+        winrate = self.get_winrate(name)
+        return [tier, division, lp, winrate]
 
     def get_summoner_level(self, name):
         api_url = Consts.URL["summoner_by_name"].format(
@@ -99,12 +100,17 @@ class RiotAPI(object):
 
         for Id in playerIds.keys():
             try:
+                found = False
                 for queue in ranks[Id]:
                     if queue['queue'] == 'RANKED_SOLO_5x5':
                         r[int(playerChamps.index(queue["entries"][0]["playerOrTeamName"])/2)].append(queue["tier"])
                         r[int(playerChamps.index(queue["entries"][0]["playerOrTeamName"])/2)].append(queue["entries"][0]["division"])
+                        found = True
+                if not found:
+                    r[int(playerChamps.index(playerIds[Id])/2)].append("unranked")
             except Exception as e:
                 r[int(playerChamps.index(playerIds[Id])/2)].append("unranked")
+                print(e)
         return r
 
     def get_free_champions(self):
@@ -125,4 +131,36 @@ class RiotAPI(object):
         for champ in r["champions"]:
             champions.append(Consts.CHAMPIONS_BY_ID[champ["id"]])
         return champions
+
+    def get_winrate(self, name, season="SEASON2015"):
+        summoner_id=self.get_summoner_by_name(name)[name.lower()]["id"]
+
+        api_url = Consts.URL["statistics_summary"].format(
+            region=self.region,
+            summoner_id=summoner_id,
+            version=Consts.API_VERSIONS["statistics"])
+        
+        args = {
+            "season": season,
+            "api_key": self.api_key
+            }
+        
+        r = requests.get(
+            Consts.URL["base"].format (
+                proxy=self.region,
+                region=self.region,
+                url=api_url
+                 ),
+            params=args
+            ).json()
+
+        for queue in r["playerStatSummaries"]:
+            if queue["playerStatSummaryType"] == "RankedSolo5x5":
+                wins = queue["wins"]
+                losses = queue["losses"]
+                total_games = wins + losses
+        if total_games != 0:
+            winrate = wins / total_games
+
+        return round(winrate * 100)
             

@@ -3,12 +3,14 @@ URL = {
     "summoner_by_name": "v{version}/summoner/by-name/{names}",
     "league": "v{version}/league/by-summoner/{summonerId}/entry",
     "current_game": "https://{proxy}.api.pvp.net/observer-mode/rest/consumer/getSpectatorGameInfo/{platformId}/{summonerId}",
-    "free_champions": "v1.2/champion"
+    "free_champions": "v1.2/champion",
+    "statistics_summary": "v{version}/stats/by-summoner/{summoner_id}/summary"
 }
 
 API_VERSIONS = {
     "summoner": "1.4",
-    "league": "2.5"
+    "league": "2.5",
+    "statistics": "1.3"
 }
 
 REGIONS = {

@@ -156,11 +156,12 @@ class Bot(discord.Client):
         try:
             rank = riot.get_summoner_rank("".join(username.split(" ")))
 
-            to_return = "The summoner {username} is ranked {tier} {division} and currently has {LP} LPs.".format(
+            to_return = "The summoner {username} is ranked {tier} {division} and currently has {LP} LPs. (S5 winrate: {winrate})".format(
                 username=username,
                 tier=rank[0].capitalize(),
                 division=rank[1],
-                LP=str(rank[2])
+                LP=str(rank[2]),
+                winrate=str(rank[3]) + "%"
             )
 
         except ValueError:
@@ -204,6 +205,7 @@ class Bot(discord.Client):
         
         to_send = "**Blue team**:\n"
         for player in ranks:
+            print(player)
             if ranks.index(player) == len(ranks)/2:
                 to_send += "\n**Red team**:\n"
             if player[2] == "unranked":
