@@ -49,7 +49,8 @@ class Bot(discord.Client):
                          "!ytlatest": self.latest_videos,
                          "!ytsearch": self.search_video,
                          "!ytthumbnail": self.get_thumbnail,
-                         "!avatar": self.avatar
+                         "!avatar": self.avatar,
+                         "!sendpm": self.sendpm
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -68,7 +69,8 @@ class Bot(discord.Client):
                               "!ytsearch": "Sends the URL of the first corresponding youtube video.",
                               "!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
                               "!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
-                              "!avatar": "Sends the URL of the mentionned user's avatar"
+                              "!avatar": "Sends the URL of the mentionned user's avatar",
+                              "!sendpm": "Sends a private message to the mentionned user"
                               }
 
     def uptime(self, ignore):
@@ -205,7 +207,6 @@ class Bot(discord.Client):
         
         to_send = "**Blue team**:\n"
         for player in ranks:
-            print(player)
             if ranks.index(player) == len(ranks)/2:
                 to_send += "\n**Red team**:\n"
             if player[2] == "unranked":
@@ -255,6 +256,10 @@ class Bot(discord.Client):
         self.send_typing(chan)
         self.send_message(chan, message.content)
 
+    def sendpm(self, message):
+        m = self.truncate(message.content)
+        self.send_message(message.mentions[0], m)
+
     def kill(self, message):
         if self.author_is_admin(message):
             self.send_message(message.channel,
@@ -295,6 +300,7 @@ class Bot(discord.Client):
             **!ytthumbnail** *query*\n\
             **!uptime**\n\
             **!send** *server*, *channel*, message\n\
+            **!sendpm** @*user*\n\
             **!fc**\n\
             **!status** *game id*\n\
             **!kill** (admin only)\n\

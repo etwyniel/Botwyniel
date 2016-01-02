@@ -110,7 +110,6 @@ class RiotAPI(object):
                     r[int(playerChamps.index(playerIds[Id])/2)].append("unranked")
             except Exception as e:
                 r[int(playerChamps.index(playerIds[Id])/2)].append("unranked")
-                print(e)
         return r
 
     def get_free_champions(self):
