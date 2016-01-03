@@ -47,17 +47,6 @@ def on_ready():
     print('------')
     botwyniel.log("Botwyniel initialized")
 
-def cycle_status():
-    while True:
-        if len(botwyniel.current_status) >= 20:
-            for a in range(len(botwyniel.current_status)):
-                new_status = Game(name=botwyniel.current_status[a:] + " - " + botwyniel.current_status)
-                botwyniel.change_status(new_status)
-                sleep(0.2)
-
-cycle = Thread(target=cycle_status)
-cycle.start()
-
 
 #Main function of the bot.
 botwyniel.run()
