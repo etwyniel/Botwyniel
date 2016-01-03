@@ -1,6 +1,7 @@
 import threading
 from datetime import datetime, date
 from time import sleep
+from threading import Thread
 
 import discord
 from RiotAPI import RiotAPI
@@ -26,6 +27,7 @@ class Bot(discord.Client):
         self.channels = {}
         self.name = name
         self.whitelist = kwargs["wl"]
+        self.current_status = ""
 
         # the actual headers for the request...
         # we only override 'authorization' since the rest could use the defaults.
@@ -34,6 +36,7 @@ class Bot(discord.Client):
         }
         self.username = username
         self.password = password
+        self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
         self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
         self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "PBE"]
         self.commands = {"!rank": self.rank,
@@ -100,9 +103,11 @@ class Bot(discord.Client):
             message.content = self.truncate(message.content)
             game = discord.Game(name=message.content)
             self.change_status(game)
+            self.current_status = message.content
         else:
             game = discord.Game(name=message)
             self.change_status(game)
+            self.current_status = message
 
     def avatar(self, message):
         try:
@@ -135,6 +140,8 @@ class Bot(discord.Client):
                 for r in message.author.roles:
                     roles.append(r.name)
                 return "admin" in roles
+            elif message.author.name in self.whitelist:
+                return True
         elif message.author.name in self.whitelist:
             return True
         else: return False
@@ -314,7 +321,8 @@ class Bot(discord.Client):
 
     def log(self, event):
         channel = self.channels[self.servs["Etwyniel's"]]["logs"]
-        to_send = "[{date}] - *{time}*\n{event}".format(date=str(date.today()), time="".join(str(datetime.now().time(
-
-        )).split(".")[0])[0:5], event=event)
+        to_send = "[{date}] - *{time}*\n{event}".format(
+            date=str(date.today()),
+            time="".join(str(datetime.now().time()).split(".")[0])[0:5],
+            event=event)
         self.send_message(channel, to_send)

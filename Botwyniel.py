@@ -1,7 +1,10 @@
 import logging
 from os import environ as en
+from threading import Thread
+from time import sleep
 
 from Bot import Bot
+from discor.game import Game
 
 # Set up the logging module to output diagnostic to the console.
 logging.basicConfig()
@@ -43,6 +46,17 @@ def on_ready():
         botwyniel.channels[a] = ch_dict
     print('------')
     botwyniel.log("Botwyniel initialized")
+
+def cycle_status():
+    while True:
+        if len(botwyniel.current_status) >= 20:
+            for a in range(len(botwyniel.current_status)):
+                new_status = Game(name=botwyniel.current_status[a:] + " - " + botwyniel.current_status)
+                botwyniel.change_status(new_status)
+                sleep(0.2)
+
+cycle = Thread(target=cycle_status)
+cycle.start()
 
 
 #Main function of the bot.
