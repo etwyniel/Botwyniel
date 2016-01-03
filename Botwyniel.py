@@ -4,7 +4,7 @@ from threading import Thread
 from time import sleep
 
 from Bot import Bot
-from discor.game import Game
+from discord.game import Game
 
 # Set up the logging module to output diagnostic to the console.
 logging.basicConfig()
