@@ -53,7 +53,8 @@ class Bot(discord.Client):
                          "!ytsearch": self.search_video,
                          "!ytthumbnail": self.get_thumbnail,
                          "!avatar": self.avatar,
-                         "!sendpm": self.sendpm
+                         "!sendpm": self.sendpm,
+                         "!love": self.love
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -90,6 +91,9 @@ class Bot(discord.Client):
     def send_uptime(self, message):
         self.send_typing(message.channel)
         self.send_message(message.channel, self.uptime(message))
+
+    def love(self, message):
+        self.send_message(message.author, "You loyal!")
 
     def connect(self, ignore):
         print("Logging in...")
