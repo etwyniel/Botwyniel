@@ -131,7 +131,7 @@ class Bot(discord.Client):
             region = m[1]
         except IndexError:
             region = 'euw'
-        return username, region
+        return username, region.lower()
 
     def author_is_admin(self, message):
         if type(message.author) == discord.Member:
@@ -212,10 +212,10 @@ class Bot(discord.Client):
                               )
             return None
         
-        to_send = "**Blue team**:\n"
+        to_send = "**Red team**:\n"
         for player in ranks:
             if ranks.index(player) == len(ranks)/2:
-                to_send += "\n**Red team**:\n"
+                to_send += "\n**Blue team**:\n"
             if player[2] == "unranked":
                 to_send += "{name} (**{champion}**): Unranked\n".format(
                     name=player[0],
