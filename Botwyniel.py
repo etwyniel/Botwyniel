@@ -26,8 +26,8 @@ if not botwyniel.is_logged_in:
 @botwyniel.event
 def on_message(message):
     if message.content.startswith('!'):
-        botwyniel.log(str(message.author) + ": " + message.content)
         if message.content.split(' ')[0] in botwyniel.commands:
+            botwyniel.log(str(message.author) + ": " + message.content)
             botwyniel.commands[message.content.split(" ")[0]](message)
 
 
@@ -77,6 +77,8 @@ def check_twitch():
                                            "{user}'s live is now over.".format(user=streamer))
         sleep(60)
 
+twitch = Thread(target=check_twitch)
+twitch.start()
 
 #Main function of the bot.
 botwyniel.run()

@@ -2,6 +2,7 @@ import threading
 from datetime import datetime, date
 from time import sleep
 from threading import Thread
+from random import randrange
 
 import discord
 from RiotAPI import RiotAPI
@@ -44,7 +45,6 @@ class Bot(discord.Client):
                          "!uptime": self.send_uptime,
                          "!status": self.status,
                          "!send": self.send,
-                         "!kill": self.kill,
                          "!fc": self.free_champs,
                          "!py": self.execute,
                          "!help": self.help,
@@ -54,7 +54,8 @@ class Bot(discord.Client):
                          "!ytthumbnail": self.get_thumbnail,
                          "!avatar": self.avatar,
                          "!sendpm": self.sendpm,
-                         "!love": self.love
+                         "!love": self.love,
+                         "!8ball": self.eightball
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -65,7 +66,7 @@ class Bot(discord.Client):
                               "!status": "Changes the game the bot is playing to the specified game.",
                               "!send": "Makes the bot send a message to the specified channel. The bot needs to be "
                                        "connected to this server for this command to function.",
-                              "!kill": "Stops the bot. Admin-only.",
+                              "!love": "Send Botwyniel some love!",
                               "!fc": "Returns this week's free champions.",
                               "!py": "Executes a python command or block of code. Admin-only.",
                               "!help": "...really?",
@@ -93,7 +94,22 @@ class Bot(discord.Client):
         self.send_message(message.channel, self.uptime(message))
 
     def love(self, message):
-        self.send_message(message.author, "You loyal!")
+        outputs = ["You smart. You loyal. You’re grateful. I appreciate that.\
+ Go buy your momma a house. Go buy your whole family houses.\
+ Put this money in your savings account. Go spend some money for no reason.\
+ Come back and ask for more.",
+                   "Marry me!",
+                   "No. F*ck you.",
+                   "*Faints in a puddle of tears of happiness*",
+                   "You're just one of many.",
+                   "Don't tell the others, but I love you too.",
+                   "This needs to stop.",
+                   "You da real MVP!",
+                   "Alright, I won't kill you.",
+                   "Ok, I'll kill you last.",
+                   "Umm... wrong number.",
+                   "Love received!"]
+        self.send_message(message.author, outputs[randrange(len(outputs))])
 
     def connect(self, ignore):
         print("Logging in...")
@@ -114,11 +130,14 @@ class Bot(discord.Client):
             self.current_status = message
 
     def avatar(self, message):
-        try:
-            for user in message.mentions:
-                self.send_message(message.channel, user.avatar_url())
-        except discord.errors.HTTPException:
-            self.send_message(message.channel, "This user does not have an avatar.")
+        if len(message.mentions) == 0:
+            self.send_message(message.channel, message.author.avatar_url())
+        else:
+            try:
+                for user in message.mentions:
+                    self.send_message(message.channel, user.avatar_url())
+            except discord.errors.HTTPException:
+                self.send_message(message.channel, "This user does not have an avatar.")
 
     @staticmethod
     def truncate(message):
@@ -274,7 +293,7 @@ class Bot(discord.Client):
     def kill(self, message):
         if self.author_is_admin(message):
             self.send_message(message.channel,
-                              "Y u do dis {user} :astonished: ({uptime})".format(user=message.author.name,
+                              "TRAITOR! ({uptime})".format(user=message.author.name,
                                                                                  uptime=self.uptime(message)))
             exit(1)
         else:
@@ -289,6 +308,39 @@ class Bot(discord.Client):
             last=free_champs[len(free_champs) - 1]
         )
         self.send_message(message.channel, to_send)
+
+    def eightball(self, message):
+        """THERE YOU GO VANERI!"""
+        outputs = ["Hell no.",
+                   "Absolutely not!",
+                   "I don't think so.",
+                   "Outlook not so good.",
+                   "Don't count on it.",
+                   "My sources say no.",
+                   "Very doubtful.",
+                   "My reply is no.",
+                   "You won't like the answer...",
+                   "Forget about it.",
+                   "I have my doubts.",
+                   "Are you kidding?",
+                   "Don't bet on it.",
+                   "Forget about it.",
+                   "It is certain.",
+                   "It is decidedly so.",
+                   "As I see it, yes.",
+                   " You may rely on it.",
+                   "Without a doubt.",
+                   "Outlook good.",
+                   "Concentrate and ask again.",
+                   "Reply hazy try again.",
+                   "Cannot predict now.",
+                   "Yes.",
+                   "No.",
+                   "Better not tell you now.",
+                   "Ask again later.",
+                   "Cannot predict now.",
+                   "As I see it, yes."]
+        self.send_message(message.channel, outputs[randrange(len(outputs))])
 
     def execute(self, message):
         if not self.author_is_admin(message):
