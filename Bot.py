@@ -75,7 +75,8 @@ class Bot(discord.Client):
                               "!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
                               "!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
                               "!avatar": "Sends the URL of the mentionned user's avatar",
-                              "!sendpm": "Sends a private message to the mentionned user"
+                              "!sendpm": "Sends a private message to the mentionned user",
+                              "!8ball": "Ask me a question!"
                               }
 
     def uptime(self, ignore):
@@ -365,6 +366,8 @@ class Bot(discord.Client):
             **!send** *server*, *channel*, message\n\
             **!sendpm** @*user*\n\
             **!fc**\n\
+            **!love**\n\
+            **!8ball** *question*\n\
             **!status** *game id*\n\
             **!kill** (admin only)\n\
             **!py** *command* (admin only)\n\
