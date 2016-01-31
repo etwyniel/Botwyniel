@@ -197,7 +197,7 @@ class Bot(discord.Client):
                 winrate=str(rank[3]) + "%"
             )
 
-        except ValueError:
+        except (ValueError, KeyError):
             try:
                 level = riot.get_summoner_level("".join(username.split(" ")))
                 to_return = "The summoner {username} is unranked and is level {level}.".format(
