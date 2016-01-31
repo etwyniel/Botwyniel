@@ -341,7 +341,9 @@ class Bot(discord.Client):
                    "Ask again later.",
                    "Cannot predict now.",
                    "As I see it, yes."]
-        self.send_message(message.channel, outputs[randrange(len(outputs))])
+        to_send = outputs[randrange(len(outputs))]
+        self.send_message(message.channel, to_send)
+        self.log("Answer: " + to_send)
 
     def execute(self, message):
         if not self.author_is_admin(message):

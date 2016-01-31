@@ -260,7 +260,7 @@ CHAMPION_IDS = [
     ['Quinn', 133],
     ['Maokai', 57],
     ['JarvanIV', 59],
-    ['MonkeyKing', 62],
+    ['Wukong', 62],
     ['Nasus', 75],
     ['MissFortune', 21],
     ['Lulu', 117],
@@ -290,5 +290,6 @@ CHAMPION_IDS = [
     ['Riven', 92],
     ['Pantheon', 80],
     ['TahmKench', 223],
-    ['Illaoi', 420]
+    ['Illaoi', 420],
+    ['Jhin', 202]
 ]
