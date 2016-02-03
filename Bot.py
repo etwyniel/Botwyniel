@@ -55,7 +55,9 @@ class Bot(discord.Client):
                          "!avatar": self.avatar,
                          "!sendpm": self.sendpm,
                          "!love": self.love,
-                         "!8ball": self.eightball
+                         "!8ball": self.eightball,
+                         "!dice": self.dice,
+                         "!coin": self.coin
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -76,7 +78,9 @@ class Bot(discord.Client):
                               "!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
                               "!avatar": "Sends the URL of the mentionned user's avatar",
                               "!sendpm": "Sends a private message to the mentionned user",
-                              "!8ball": "Ask me a question!"
+                              "!8ball": "Ask me a question!",
+                              "!coin": "Flip a coin!",
+                              "!dice": "Roll n dices with x faces.\n The command should look like this: **ndx**"
                               }
 
     def uptime(self, ignore):
@@ -278,6 +282,37 @@ class Bot(discord.Client):
         except IndexError:
             self.send_message(message.channel, "No video found matching this query.")
 
+    def dice(self, message):
+        try:
+            arguments = self.truncate(message.content)
+            n = int(arguments.split('d')[0])
+            d = int(arguments.split('d')[1])
+            if n > 10:
+                to_return = 'Too many dices!'
+            elif d > 100:
+                to_return = 'Too many faces!'
+            else:
+                to_return = ''
+                sum = 0
+                for a in range(n-1):
+                    number = randrange(d) + 1
+                    sum += number
+                    to_return += str(number) + ' + '
+                number = randrange(d) + 1
+                sum += number
+                to_return += str(number) + ' = ' + str(sum)
+        except:
+            to_return = 'Invalid format!'
+        self.send_message(message.channel, to_return)
+
+    def coin(self, message):
+        value = randrange(2)
+        if value:
+            to_return = 'Heads!'
+        else:
+            to_return = 'Tails!'
+        self.send_message(message.channel, to_return)
+
     def send(self, message):
         args = self.truncate(message.content).split(", ")
         server = args[0]
@@ -370,6 +405,8 @@ class Bot(discord.Client):
             **!fc**\n\
             **!love**\n\
             **!8ball** *question*\n\
+            **!coin**\n\
+            **!dice** *number of dices* d *type of dice*\n\
             **!status** *game id*\n\
             **!kill** (admin only)\n\
             **!py** *command* (admin only)\n\
