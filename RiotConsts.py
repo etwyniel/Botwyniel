@@ -159,7 +159,8 @@ CHAMPIONS_BY_ID = {
     245: 'Ekko',
     10: 'Kayle',
     254: 'Vi',
-    420: 'Illaoi'
+    420: 'Illaoi',
+    202: 'Jhin'
 }
 
 CHAMPION_IDS = [
