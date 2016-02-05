@@ -57,7 +57,8 @@ class Bot(discord.Client):
                          "!love": self.love,
                          "!8ball": self.eightball,
                          "!dice": self.dice,
-                         "!coin": self.coin
+                         "!coin": self.coin,
+                         "!suggest": self.suggest
                          }
         self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
@@ -80,7 +81,8 @@ class Bot(discord.Client):
                               "!sendpm": "Sends a private message to the mentionned user",
                               "!8ball": "Ask me a question!",
                               "!coin": "Flip a coin!",
-                              "!dice": "Roll n dices with x faces.\n The command should look like this: **ndx**"
+                              "!dice": "Roll n dices with x faces.\n The command should look like this: **ndx**",
+                              "!suggest": "Make a suggestion to improve " + self.name
                               }
 
     def uptime(self, ignore):
@@ -389,6 +391,11 @@ class Bot(discord.Client):
         except Exception as e:
             self.log(str(e))
             self.send_message(message.channel, "Error occured: " + str(e))
+            
+    def suggest(self, message):
+        suggestion = self.truncate(message)
+        self.send_message(self.channels[self.servs['Etwyniel']]['suggestions'], message.author + ': ' + suggestion)
+        self.send_message(message.channel, "Thanks for the suggestion!")
 
     def help(self, message):
         if self.truncate(message.content) == "":
@@ -408,7 +415,7 @@ class Bot(discord.Client):
             **!coin**\n\
             **!dice** *number of dices* d *type of dice*\n\
             **!status** *game id*\n\
-            **!kill** (admin only)\n\
+            **!suggest** *suggestion*\n\
             **!py** *command* (admin only)\n\
             **optional, default is euw.*\n\n\
             Please type '!help *command*' for further instructions.")
