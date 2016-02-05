@@ -131,7 +131,7 @@ class RiotAPI(object):
             champions.append(Consts.CHAMPIONS_BY_ID[champ["id"]])
         return champions
 
-    def get_winrate(self, name, season="SEASON2015"):
+    def get_winrate(self, name, season="SEASON2016"):
         summoner_id=self.get_summoner_by_name(name)[name.lower()]["id"]
 
         api_url = Consts.URL["statistics_summary"].format(

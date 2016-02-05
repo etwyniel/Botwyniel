@@ -49,6 +49,7 @@ import sys
 import logging
 import itertools
 import datetime
+import zlib
 from base64 import b64encode
 
 log = logging.getLogger(__name__)
@@ -100,7 +101,16 @@ class WebSocket(WebSocketBaseClient):
 
     def received_message(self, msg):
         self.dispatch('socket_raw_receive', msg)
-        response = json.loads(str(msg))
+        if msg.is_binary:
+            msg = zlib.decompress(msg.data, 15, 10490000)
+            if sys.version_info[0] == 2:
+                msg = str(msg).decode('utf-8')
+            else:
+                msg = msg.decode('utf-8')
+            response = json.loads(msg)
+        else:
+            response = json.loads(str(msg))
+
         log.debug('WebSocket Event: {}'.format(response))
         self.dispatch('socket_response', response)
 
@@ -259,7 +269,7 @@ class ConnectionState(object):
 
     def handle_guild_member_add(self, data):
         server = self._get_server(data.get('guild_id'))
-        member = Member(server=server, **data) #deaf=False, mute=False, **data)
+        member = Member(server=server, **data)
         server.members.append(member)
         self.dispatch('member_join', member)
 
@@ -451,6 +461,7 @@ class Client(object):
                 'op': 2,
                 'd': {
                     'token': self.token,
+                    'compress': True,
                     'properties': {
                         '$os': sys.platform,
                         '$browser': 'discord.py',
