@@ -394,7 +394,7 @@ class Bot(discord.Client):
             
     def suggest(self, message):
         suggestion = self.truncate(message.content)
-        self.send_message(self.channels[self.servs['Etwyniel']]['suggestions'], message.author.name + ': ' + suggestion)
+        self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.name + ': ' + suggestion)
         self.send_message(message.channel, "Thanks for the suggestion!")
 
     def help(self, message):
