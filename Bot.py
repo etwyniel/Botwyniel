@@ -393,8 +393,8 @@ class Bot(discord.Client):
             self.send_message(message.channel, "Error occured: " + str(e))
             
     def suggest(self, message):
-        suggestion = self.truncate(message)
-        self.send_message(self.channels[self.servs['Etwyniel']]['suggestions'], message.author + ': ' + suggestion)
+        suggestion = self.truncate(message.content)
+        self.send_message(self.channels[self.servs['Etwyniel']]['suggestions'], message.author.name + ': ' + suggestion)
         self.send_message(message.channel, "Thanks for the suggestion!")
 
     def help(self, message):
