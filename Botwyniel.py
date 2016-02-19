@@ -25,7 +25,7 @@ if not botwyniel.is_logged_in:
 #corresponding function.
 @botwyniel.event
 def on_message(message):
-    if message.content.startswith('!'):
+    if message.content.startswith('0!'):
         if message.content.split(' ')[0] in botwyniel.commands:
             botwyniel.log(str(message.author) + ": " + message.content)
             botwyniel.commands[message.content.split(" ")[0]](message)

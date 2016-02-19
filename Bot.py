@@ -40,49 +40,49 @@ class Bot(discord.Client):
         self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
         self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
         self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "PBE"]
-        self.commands = {"!rank": self.rank,
-                         "!gameranks": self.gameranks,
-                         "!uptime": self.send_uptime,
-                         "!status": self.status,
-                         "!send": self.send,
-                         "!fc": self.free_champs,
-                         "!py": self.execute,
-                         "!help": self.help,
-                         "!join": self.join_server,
-                         "!ytlatest": self.latest_videos,
-                         "!ytsearch": self.search_video,
-                         "!ytthumbnail": self.get_thumbnail,
-                         "!avatar": self.avatar,
-                         "!sendpm": self.sendpm,
-                         "!love": self.love,
-                         "!8ball": self.eightball,
-                         "!dice": self.dice,
-                         "!coin": self.coin,
-                         "!suggest": self.suggest
+        self.commands = {"0!rank": self.rank,
+                         "0!gameranks": self.gameranks,
+                         "0!uptime": self.send_uptime,
+                         "0!status": self.status,
+                         "0!send": self.send,
+                         "0!fc": self.free_champs,
+                         "0!py": self.execute,
+                         "0!help": self.help,
+                         "0!join": self.join_server,
+                         "0!ytlatest": self.latest_videos,
+                         "0!ytsearch": self.search_video,
+                         "0!ytthumbnail": self.get_thumbnail,
+                         "0!avatar": self.avatar,
+                         "0!sendpm": self.sendpm,
+                         "0!love": self.love,
+                         "0!8ball": self.eightball,
+                         "0!dice": self.dice,
+                         "0!coin": self.coin,
+                         "0!suggest": self.suggest
                          }
-        self.commands_help = {"!rank": "Returns the rank of the specified player. If your Discord username is the "
+        self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                        "same as your summoner name, you can use !rank me, *region* instead.",
-                              "!gameranks": "Returns the ranks of the players in the game the specified player is "
+                              "0!gameranks": "Returns the ranks of the players in the game the specified player is "
                                             "currently in. If your Discord username is the same as your summoner "
                                             "name, you can use !gameranks me, *region* instead.",
-                              "!uptime": "Returns the duration for which the bot has been running.",
-                              "!status": "Changes the game the bot is playing to the specified game.",
-                              "!send": "Makes the bot send a message to the specified channel. The bot needs to be "
+                              "0!uptime": "Returns the duration for which the bot has been running.",
+                              "0!status": "Changes the game the bot is playing to the specified game.",
+                              "0!send": "Makes the bot send a message to the specified channel. The bot needs to be "
                                        "connected to this server for this command to function.",
-                              "!love": "Send Botwyniel some love!",
-                              "!fc": "Returns this week's free champions.",
-                              "!py": "Executes a python command or block of code. Admin-only.",
-                              "!help": "...really?",
-                              "!join": "Makes the bot accept an instant invite (http://discord.gg/xxxxxxxx).",
-                              "!ytsearch": "Sends the URL of the first corresponding youtube video.",
-                              "!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
-                              "!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
-                              "!avatar": "Sends the URL of the mentionned user's avatar",
-                              "!sendpm": "Sends a private message to the mentionned user",
-                              "!8ball": "Ask me a question!",
-                              "!coin": "Flip a coin!",
-                              "!dice": "Roll n dices with x faces.\n The command should look like this: **ndx**",
-                              "!suggest": "Make a suggestion to improve " + self.name
+                              "0!love": "Send Botwyniel some love!",
+                              "0!fc": "Returns this week's free champions.",
+                              "0!py": "Executes a python command or block of code. Admin-only.",
+                              "0!help": "...really?",
+                              "0!join": "Makes the bot accept an instant invite (http://discord.gg/xxxxxxxx).",
+                              "0!ytsearch": "Sends the URL of the first corresponding youtube video.",
+                              "0!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
+                              "0!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
+                              "0!avatar": "Sends the URL of the mentionned user's avatar",
+                              "0!sendpm": "Sends a private message to the mentionned user",
+                              "0!8ball": "Ask me a question!",
+                              "0!coin": "Flip a coin!",
+                              "0!dice": "Roll n dices with x faces.\n The command should look like this: **ndx**",
+                              "0!suggest": "Make a suggestion to improve " + self.name
                               }
 
     def uptime(self, ignore):
@@ -178,7 +178,14 @@ class Bot(discord.Client):
 
     def join_server(self, message):
         url = self.truncate(message.content)
-        self.accept_invite(url)
+        a = self.accept_invite(url)
+        try:
+            if a == None:
+                self.send_message(message.channel, 'Server joined!')
+            else:
+                self.send_message(message.channel, 'Failed to join server')
+        except:
+            self.send_message(message.channel, 'Failed to join server')
 
     def rank(self, message):
         self.send_typing(message.channel)
@@ -397,26 +404,29 @@ class Bot(discord.Client):
         self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.name + ': ' + suggestion)
         self.send_message(message.channel, "Thanks for the suggestion!")
 
+    def info(self, message):
+        self.send_message(message.channel, "Python bot made by Etwyniel, using discord.py")
+
     def help(self, message):
         if self.truncate(message.content) == "":
             self.send_message(message.author, "The available commands are:\n\
-            **!rank** *username*, *region*\*\n\
-            **!gameranks** *username*, *region*\*\n\
-            **!avatar** @*user*\n\
-            **!ytsearch** *query*\n\
-            **!ytlatest** *channel name*\n\
-            **!ytthumbnail** *query*\n\
-            **!uptime**\n\
-            **!send** *server*, *channel*, message\n\
-            **!sendpm** @*user*\n\
-            **!fc**\n\
-            **!love**\n\
-            **!8ball** *question*\n\
-            **!coin**\n\
-            **!dice** *number of dices* d *type of dice*\n\
-            **!status** *game id*\n\
-            **!suggest** *suggestion*\n\
-            **!py** *command* (admin only)\n\
+            **0!rank** *username*, *region*\*\n\
+            **0!gameranks** *username*, *region*\*\n\
+            **0!avatar** @*user*\n\
+            **0!ytsearch** *query*\n\
+            **0!ytlatest** *channel name*\n\
+            **0!ytthumbnail** *query*\n\
+            **0!uptime**\n\
+            **0!send** *server*, *channel*, message\n\
+            **0!sendpm** @*user*\n\
+            **0!fc**\n\
+            **0!love**\n\
+            **0!8ball** *question*\n\
+            **0!coin**\n\
+            **0!dice** *number of dices* d *type of dice*\n\
+            **0!status** *game id*\n\
+            **0!suggest** *suggestion*\n\
+            **0!py** *command* (admin only)\n\
             **optional, default is euw.*\n\n\
             Please type '!help *command*' for further instructions.")
         elif self.truncate(message.content) in self.commands:
