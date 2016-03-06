@@ -44,6 +44,7 @@ def on_message(message):
             botwyniel.accept_invite(message.content)
             if len(botwyniel.servers) > len(botwyniel.servs):
                    botwyniel.send_message(message.channel, 'Successfully accepted invite')
+                   list_servers()
             else:
                 botwyniel.send_message(message.channel, 'Already in server.')
         except (InvalidArgument, HTTPException):
