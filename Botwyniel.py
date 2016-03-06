@@ -20,23 +20,7 @@ if not botwyniel.is_logged_in:
     print("Logging in to Discord failed")
     exit(1)
 
-
-#bot waits for a message containing a command starting with "!", and executes the
-#corresponding function.
-@botwyniel.event
-def on_message(message):
-    if message.content.startswith('0!'):
-        if message.content.split(' ')[0] in botwyniel.commands:
-            botwyniel.log(str(message.author) + ": " + message.content)
-            botwyniel.commands[message.content.split(" ")[0]](message)
-
-
-#Upon logging in, bot prints the names of the servers it is connected to in the console
-@botwyniel.event
-def on_ready():
-    botwyniel.status(en["default_game"])
-    print('Logged in as ' + botwyniel.user.name)
-
+def list_servers():
     print("\nAvailable servers:")
     for a in botwyniel.servers:
         print(a.name)
@@ -46,6 +30,32 @@ def on_ready():
             ch_dict[channel.name] = channel
         botwyniel.channels[a] = ch_dict
     print('------')
+
+#bot waits for a message containing a command starting with "!", and executes the
+#corresponding function.
+@botwyniel.event
+def on_message(message):
+    if message.content.startswith('0!'):
+        if message.content.split(' ')[0] in botwyniel.commands:
+            botwyniel.log(str(message.author) + ": " + message.content)
+            botwyniel.commands[message.content.split(" ")[0]](message)
+    elif message.channel.is_private and message.author.id == '109338686889476096':
+        try:
+            botwyniel.accept_invite(message.content)
+            if len(botwyniel.servers) > len(botwyniel.servs):
+                   botwyniel.send_message(message.channel, 'Successfully accepted invite')
+            else:
+                botwyniel.send_message(message.channel, 'Already in server.')
+        except (InvalidArgument, HTTPException):
+                botwyniel.send_message(message.channel, 'Failed to accept invite')
+
+
+#Upon logging in, bot prints the names of the servers it is connected to in the console
+@botwyniel.event
+def on_ready():
+    botwyniel.status(en["default_game"])
+    print('Logged in as ' + botwyniel.user.name)
+    list_servers()
     botwyniel.log("Botwyniel initialized")
 
 def check_twitch():
