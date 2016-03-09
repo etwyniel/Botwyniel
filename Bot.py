@@ -428,7 +428,7 @@ class Bot(discord.Client):
             **0!suggest** *suggestion*\n\
             **0!py** *command* (admin only)\n\
             **optional, default is euw.*\n\n\
-            Please type '!help *command*' for further instructions.")
+            Please type '0!help *command*' for further instructions.")
         elif self.truncate(message.content) in self.commands:
             self.send_message(message.author, self.commands_help[self.truncate(message.content)])
         else:

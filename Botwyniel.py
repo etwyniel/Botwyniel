@@ -41,8 +41,9 @@ def on_message(message):
             botwyniel.commands[message.content.split(" ")[0]](message)
     elif message.channel.is_private and message.author.id == '109338686889476096':
         try:
+            list_servers()
             botwyniel.accept_invite(message.content)
-            if len(botwyniel.servers) > len(botwyniel.servs):
+            if len(botwyniel.servers) > len(botwyniel.servs) - 1:
                    botwyniel.send_message(message.channel, 'Successfully accepted invite')
                    list_servers()
             else:
