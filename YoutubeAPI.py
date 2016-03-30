@@ -3,15 +3,14 @@ import requests
 
 class YoutubeAPI(object):
 
-    def __init__(self, query):
-        self.query = query
+    def __init__(self):
         self.key = "AIzaSyAAd6n7iBmyuVwzLZEQCS3IxYVz2I8Hl5Q"
 
 
-    def search_video(self):
+    def search_video(self, query):
         args = {"key": self.key,
                 "type": "video",
-                "q": self.query,
+                "q": query,
                 "part": "snippet"}
 
         r = requests.get(
@@ -36,11 +35,11 @@ class YoutubeAPI(object):
         channel_id = r.json()["items"][0]["id"]["channelId"]
         return channel_id
 
-    def latest_vids(self, number=3):
+    def latest_vids(self, query, number=3):
         args = {
             "key": self.key,
             "part": "snippet",
-            "channelId": self.get_channel_id(self.query),
+            "channelId": self.get_channel_id(query),
             "order": "date"}
         r = requests.get(
             "https://www.googleapis.com/youtube/v3/search",
@@ -54,10 +53,10 @@ class YoutubeAPI(object):
 
         return to_return
 
-    def get_thumbnail(self):
+    def get_thumbnail(self, query):
         args = {"key": self.key,
                 "type": "video",
-                "q": self.query,
+                "q": query,
                 "part": "snippet"}
 
         r = requests.get(
