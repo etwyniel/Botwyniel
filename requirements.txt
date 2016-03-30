@@ -1,4 +1,4 @@
-discord.py==0.10.0a0
+discord.py==0.10.0-alpha
 requests==2.8.1
 ws4py==0.3.4
 youtube-dl==2016.03.27
