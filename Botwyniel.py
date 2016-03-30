@@ -60,7 +60,7 @@ class Bot(discord.Client):
                          "0!dice": self.dice,
                          "0!coin": self.coin,
                          "0!suggest": self.suggest,
-                         "0!play": self.play_song
+                         "0!play": self.play_song,
                          "0!pause": self.pause,
                          "0!ytplay": None
                          }
