@@ -12,7 +12,7 @@ from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
 
-
+print(discord.__version__)
 class VoiceEntry:
     def __init__(self, message, song):
         self.requester = message.author
