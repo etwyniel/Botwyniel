@@ -13,6 +13,9 @@ from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
 
 print(discord.__version__)
+if not discord.opus.is_loaded():
+    discord.opus.load_opus('opus')
+    
 class VoiceEntry:
     def __init__(self, message, song):
         self.requester = message.author
