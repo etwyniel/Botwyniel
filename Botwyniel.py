@@ -521,4 +521,4 @@ class Bot(discord.Client):
         self.send_message(channel, to_send)
 
 botwyniel = Bot(os.environ['EMAIL'], os.environ['PASSWORD'], wl=["Etwyniel", "Jhysodif"])
-botwyniel.run(botwyniel.username, botwyniel.password)
+botwyniel.run()#botwyniel.username, botwyniel.password)
