@@ -1,4 +1,4 @@
-git+https://github.com/Rapptz/discord.py@async
+git+git://github.com/Rapptz/discord.py.git@async
 requests==2.8.1
 ws4py==0.3.4
 youtube-dl==2016.03.27
