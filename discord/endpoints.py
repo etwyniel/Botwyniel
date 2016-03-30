@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -28,6 +28,7 @@ BASE          = 'https://discordapp.com'
 API_BASE      = BASE     + '/api'
 GATEWAY       = API_BASE + '/gateway'
 USERS         = API_BASE + '/users'
+ME            = USERS    + '/@me'
 REGISTER      = API_BASE + '/auth/register'
 LOGIN         = API_BASE + '/auth/login'
 LOGOUT        = API_BASE + '/auth/logout'

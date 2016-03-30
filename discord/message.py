@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -26,50 +26,44 @@ DEALINGS IN THE SOFTWARE.
 
 from . import utils
 from .user import User
-from .member import Member
 from .object import Object
 import re
 
-class Message(object):
+class Message:
     """Represents a message from Discord.
 
     There should be no need to create one of these manually.
 
-    Instance attributes:
-
-    .. attribute:: edited_timestamp
-
-        A naive UTC datetime object containing the edited time of the message. Could be None.
-    .. attribute:: timestamp
-
+    Attributes
+    -----------
+    edited_timestamp : Optional[datetime.datetime]
+        A naive UTC datetime object containing the edited time of the message.
+    timestamp : datetime.datetime
         A naive UTC datetime object containing the time the message was created.
-    .. attribute:: tts
-
-        A boolean specifying if the message was done with text-to-speech.
-    .. attribute:: author
-
-        A :class:`Member` that sent the message. If :attr:`channel` is a private channel,
-        then it is a :class:`User` instead.
-    .. attribute:: content
-
+    tts : bool
+        Specifies if the message was done with text-to-speech.
+    author
+        A :class:`Member` that sent the message. If :attr:`channel` is a
+        private channel, then it is a :class:`User` instead.
+    content : str
         The actual contents of the message.
-    .. attribute:: embeds
-
+    nonce
+        The value used by the discord server and the client to verify that the message is successfully sent.
+        This is typically non-important.
+    embeds : list
         A list of embedded objects. The elements are objects that meet oEmbed's specification_.
 
         .. _specification: http://oembed.com/
-    .. attribute:: channel
-
-        The :class:`Channel` that the message was sent from. Could be a :class:`PrivateChannel` if it's a private message.
+    channel
+        The :class:`Channel` that the message was sent from.
+        Could be a :class:`PrivateChannel` if it's a private message.
         In :issue:`very rare cases <21>` this could be a :class:`Object` instead.
 
         For the sake of convenience, this :class:`Object` instance has an attribute ``is_private`` set to ``True``.
-    .. attribute:: server
-
-        The :class:`Server` that the message belongs to. If not applicable (i.e. a PM) then it's None instead.
-    .. attribute:: mention_everyone
-
-        A boolean specifying if the message mentions everyone.
+    server : Optional[:class:`Server`]
+        The server that the message belongs to. If not applicable (i.e. a PM) then it's None instead.
+    mention_everyone : bool
+        Specifies if the message mentions everyone.
 
         .. note::
 
@@ -77,8 +71,7 @@ class Message(object):
             Rather this boolean indicates if the ``@everyone`` text is in the message
             **and** it did end up mentioning everyone.
 
-    .. attribute:: mentions
-
+    mentions : list
         A list of :class:`Member` that were mentioned. If the message is in a private message
         then the list is always empty.
 
@@ -87,17 +80,19 @@ class Message(object):
             The order of the mentions list is not in any particular order so you should
             not rely on it. This is a discord limitation, not one with the library.
 
-    .. attribute:: channel_mentions
-
+    channel_mentions : list
         A list of :class:`Channel` that were mentioned. If the message is in a private message
         then the list is always empty.
-    .. attribute:: id
-
+    id : str
         The message ID.
-    .. attribute:: attachments
-
+    attachments : list
         A list of attachments given to a message.
     """
+
+    __slots__ = [ 'edited_timestamp', 'timestamp', 'tts', 'content', 'channel',
+                  'mention_everyone', 'embeds', 'id', 'mentions', 'author',
+                  'channel_mentions', 'server', '_raw_mentions', 'attachments',
+                  '_clean_content', '_raw_channel_mentions', 'nonce' ]
 
     def __init__(self, **kwargs):
         # at the moment, the timestamps seem to be naive so they have no time zone and operate on UTC time.
@@ -113,8 +108,9 @@ class Message(object):
         self.id = kwargs.get('id')
         self.channel = kwargs.get('channel')
         self.author = User(**kwargs.get('author', {}))
+        self.nonce = kwargs.get('nonce')
         self.attachments = kwargs.get('attachments')
-        self._handle_upgrades_and_server(kwargs.get('channel_id'))
+        self._handle_upgrades(kwargs.get('channel_id'))
         self._handle_mentions(kwargs.get('mentions', []))
 
     def _handle_mentions(self, mentions):
@@ -126,37 +122,70 @@ class Message(object):
         if self.channel is not None:
             for mention in mentions:
                 id_search = mention.get('id')
-                member = utils.find(lambda m: m.id == id_search, self.server.members)
+                member = self.server.get_member(id_search)
                 if member is not None:
                     self.mentions.append(member)
 
         if self.server is not None:
-            channel_mentions = self.get_raw_channel_mentions()
-            for mention in channel_mentions:
-                channel = utils.find(lambda m: m.id == mention, self.server.channels)
+            for mention in self.raw_channel_mentions:
+                channel = self.server.get_channel(mention)
                 if channel is not None:
                     self.channel_mentions.append(channel)
 
-    def get_raw_mentions(self):
-        """Returns an array of user IDs matched with the syntax of
-        <@user_id> in the message content.
+    @utils.cached_slot_property('_raw_mentions')
+    def raw_mentions(self):
+        """A property that returns an array of user IDs matched with
+        the syntax of <@user_id> in the message content.
 
         This allows you receive the user IDs of mentioned users
         even in a private message context.
         """
-        return re.findall(r'<@(\d+)>', self.content)
+        return re.findall(r'<@([0-9]+)>', self.content)
 
-    def get_raw_channel_mentions(self):
-        """Returns an array of channel IDs matched with the syntax of
-        <#channel_id> in the message content.
+    @utils.cached_slot_property('_raw_channel_mentions')
+    def raw_channel_mentions(self):
+        """A property that returns an array of channel IDs matched with
+        the syntax of <#channel_id> in the message content.
 
         This allows you receive the channel IDs of mentioned users
         even in a private message context.
         """
-        return re.findall(r'<#(\d+)>', self.content)
+        return re.findall(r'<#([0-9]+)>', self.content)
 
-    def _handle_upgrades_and_server(self, channel_id):
+    @utils.cached_slot_property('_clean_content')
+    def clean_content(self):
+        """A property that returns the content in a "cleaned up"
+        manner. This basically means that mentions are transformed
+        into the way the client shows it. e.g. ``<#id>`` will transform
+        into ``#name``.
+
+        This will also transform @everyone mentions into non-mentions.
+        """
+
+        transformations = {
+            re.escape('<#{0.id}>'.format(channel)): '#' + channel.name
+            for channel in self.channel_mentions
+        }
+
+        mention_transforms = {
+            re.escape('<@{0.id}>'.format(member)): '@' + member.name
+            for member in self.mentions
+        }
+
+        transformations.update(mention_transforms)
+
+        def repl(obj):
+            return transformations.get(re.escape(obj.group(0)), '')
+
+        pattern = re.compile('|'.join(transformations.keys()))
+        result = pattern.sub(repl, self.content)
+        return result.replace('@everyone', '@\u200beveryone')
+
+    def _handle_upgrades(self, channel_id):
         self.server = None
+        if isinstance(self.channel, Object):
+            return
+
         if self.channel is None:
             if channel_id is not None:
                 self.channel = Object(id=channel_id)
@@ -165,9 +194,6 @@ class Message(object):
 
         if not self.channel.is_private:
             self.server = self.channel.server
-            found = utils.find(lambda m: m.id == self.author.id, self.server.members)
+            found = self.server.get_member(self.author.id)
             if found is not None:
                 self.author = found
-
-
-

@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -24,7 +24,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
-class Colour(object):
+class Colour:
     """Represents a Discord role colour. This class is similar
     to an (red, green, blue) tuple.
 
@@ -32,20 +32,25 @@ class Colour(object):
 
     Supported operations:
 
-    +-----------+--------------------------------------+
-    | Operation |             Description              |
-    +===========+======================================+
-    | x == y    | Checks if two colours are equal.     |
-    +-----------+--------------------------------------+
-    | x != y    | Checks if two colours are not equal. |
-    +-----------+--------------------------------------+
+    +-----------+----------------------------------------+
+    | Operation |              Description               |
+    +===========+========================================+
+    | x == y    | Checks if two colours are equal.       |
+    +-----------+----------------------------------------+
+    | x != y    | Checks if two colours are not equal.   |
+    +-----------+----------------------------------------+
+    | hash(x)   | Return the colour's hash.              |
+    +-----------+----------------------------------------+
+    | str(x)    | Returns the hex format for the colour. |
+    +-----------+----------------------------------------+
 
-    Instance attributes:
-
-    .. attribute:: value
-
+    Attributes
+    ------------
+    value : int
         The raw integer colour value.
     """
+
+    __slots__ = [ 'value' ]
 
     def __init__(self, value):
         self.value = value
@@ -54,10 +59,16 @@ class Colour(object):
         return (self.value >> (8 * byte)) & 0xff
 
     def __eq__(self, other):
-        return self.value == getattr(other, 'value', None)
+        return isinstance(other, Colour) and self.value == other.value
 
     def __ne__(self, other):
-        return isinstance(other, Colour) and self.value != other.value
+        return not self.__eq__(other)
+
+    def __str__(self):
+        return '#' + format(self.value, 'x')
+
+    def __hash__(self):
+        return hash(self.value)
 
     @property
     def r(self):

@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -24,7 +24,9 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
-class User(object):
+from .utils import snowflake_time
+
+class User:
     """Represents a Discord user.
 
     Supported Operations:
@@ -36,30 +38,30 @@ class User(object):
     +-----------+------------------------------------+
     | x != y    | Checks if two users are not equal. |
     +-----------+------------------------------------+
+    | hash(x)   | Return the user's hash.            |
+    +-----------+------------------------------------+
     | str(x)    | Returns the user's name.           |
     +-----------+------------------------------------+
 
-    Instance attributes:
-
-    .. attribute:: name
-
+    Attributes
+    -----------
+    name : str
         The user's username.
-    .. attribute:: id
-
+    id : str
         The user's unique ID.
-    .. attribute:: discriminator
-
+    discriminator : str or int
         The user's discriminator. This is given when the username has conflicts.
-    .. attribute:: avatar
-
+    avatar : str
         The avatar hash the user has. Could be None.
     """
 
-    def __init__(self, username, id, discriminator, avatar, **kwargs):
-        self.name = username
-        self.id = id
-        self.discriminator = discriminator
-        self.avatar = avatar
+    __slots__ = ['name', 'id', 'discriminator', 'avatar']
+
+    def __init__(self, **kwargs):
+        self.name = kwargs.get('username')
+        self.id = kwargs.get('id')
+        self.discriminator = kwargs.get('discriminator')
+        self.avatar = kwargs.get('avatar')
 
     def __str__(self):
         return self.name
@@ -68,10 +70,12 @@ class User(object):
         return isinstance(other, User) and other.id == self.id
 
     def __ne__(self, other):
-        if isinstance(other, User):
-            return other.id != self.id
-        return False
+        return not self.__eq__(other)
 
+    def __hash__(self):
+        return hash(self.id)
+
+    @property
     def avatar_url(self):
         """Returns a friendly URL version of the avatar variable the user has. An empty string if
         the user has no avatar."""
@@ -79,7 +83,31 @@ class User(object):
             return ''
         return 'https://discordapp.com/api/users/{0.id}/avatars/{0.avatar}.jpg'.format(self)
 
+    @property
     def mention(self):
         """Returns a string that allows you to mention the given user."""
         return '<@{0.id}>'.format(self)
+
+    def permissions_in(self, channel):
+        """An alias for :meth:`Channel.permissions_for`.
+
+        Basically equivalent to:
+
+        .. code-block:: python
+
+            channel.permissions_for(self)
+
+        Parameters
+        -----------
+        channel
+            The channel to check your permissions for.
+        """
+        return channel.permissions_for(self)
+
+    @property
+    def created_at(self):
+        """Returns the user's creation time in UTC.
+
+        This is when the user's discord account was created."""
+        return snowflake_time(self.id)
 

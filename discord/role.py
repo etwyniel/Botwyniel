@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -26,41 +26,56 @@ DEALINGS IN THE SOFTWARE.
 
 from .permissions import Permissions
 from .colour import Colour
+from .mixins import Hashable
+from .utils import snowflake_time
 
-class Role(object):
+class Role(Hashable):
     """Represents a Discord role in a :class:`Server`.
 
-    Instance attributes:
+    Supported Operations:
 
-    .. attribute:: id
+    +-----------+------------------------------------+
+    | Operation |            Description             |
+    +===========+====================================+
+    | x == y    | Checks if two roles are equal.     |
+    +-----------+------------------------------------+
+    | x != y    | Checks if two roles are not equal. |
+    +-----------+------------------------------------+
+    | hash(x)   | Return the role's hash.            |
+    +-----------+------------------------------------+
+    | str(x)    | Returns the role's name.           |
+    +-----------+------------------------------------+
 
+    Attributes
+    ----------
+    id : str
         The ID for the role.
-    .. attribute:: name
-
+    name : str
         The name of the role.
-    .. attribute:: permissions
-
-        A :class:`Permissions` that represents the role's permissions.
-    .. attribute:: color
-                   colour
-
-        A :class:`Colour` representing the role colour.
-    .. attribute:: hoist
-
-        A boolean representing if the role will be displayed separately from other members.
-    .. attribute:: position
-
+    permissions : :class:`Permissions`
+        Represents the role's permissions.
+    colour : :class:`Colour`
+        Represents the role colour. An alias exists under ``color``.
+    hoist : bool
+         Indicates if the role will be displayed separately from other members.
+    position : int
         The position of the role. This number is usually positive.
-    .. attribute:: managed
-
-        A boolean indicating if the role is managed by the server through some form of integration
-        such as Twitch.
+    managed : bool
+        Indicates if the role is managed by the server through some form of
+        integrations such as Twitch.
     """
 
-    def __init__(self, **kwargs):
-        self.update(**kwargs)
+    __slots__ = ['id', 'name', 'permissions', 'color', 'colour', 'position',
+                 'managed', '_is_everyone', 'hoist' ]
 
-    def update(self, **kwargs):
+    def __init__(self, **kwargs):
+        self._is_everyone = kwargs.get('everyone', False)
+        self._update(**kwargs)
+
+    def __str__(self):
+        return self.name
+
+    def _update(self, **kwargs):
         self.id = kwargs.get('id')
         self.name = kwargs.get('name')
         self.permissions = Permissions(kwargs.get('permissions', 0))
@@ -69,8 +84,15 @@ class Role(object):
         self.hoist = kwargs.get('hoist', False)
         self.managed = kwargs.get('managed', False)
         self.color = self.colour
-        self._is_everyone = kwargs.get('everyone', False)
+        if 'everyone' in kwargs:
+            self._is_everyone = kwargs['everyone']
 
+    @property
     def is_everyone(self):
         """Checks if the role is the @everyone role."""
         return self._is_everyone
+
+    @property
+    def created_at(self):
+        """Returns the role's creation time in UTC."""
+        return utils.snowflake_time(self.id)

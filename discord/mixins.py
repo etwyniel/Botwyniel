@@ -24,42 +24,19 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
-class Game:
-    """Represents a Discord game.
-
-    Supported Operations:
-
-    +-----------+------------------------------------+
-    | Operation |            Description             |
-    +===========+====================================+
-    | x == y    | Checks if two games are equal.     |
-    +-----------+------------------------------------+
-    | x != y    | Checks if two games are not equal. |
-    +-----------+------------------------------------+
-    | hash(x)   | Return the games's hash.           |
-    +-----------+------------------------------------+
-    | str(x)    | Returns the games's name.          |
-    +-----------+------------------------------------+
-
-    Attributes
-    -----------
-    name : str
-        The game's name.
-    """
-
-    __slots__ = ['name']
-
-    def __init__(self, **kwargs):
-        self.name = kwargs.get('name')
-
-    def __str__(self):
-        return self.name
+class EqualityComparable:
+    __slots__ = []
 
     def __eq__(self, other):
-        return isinstance(other, Game) and other.name == self.name
+        return isinstance(other, self.__class__) and other.id == self.id
 
     def __ne__(self, other):
-        return not self.__eq__(other)
+        if isinstance(other, self.__class__):
+            return other.id != self.id
+        return True
+
+class Hashable(EqualityComparable):
+    __slots__ = []
 
     def __hash__(self):
-        return hash(self.name)
+        return hash(self.id)

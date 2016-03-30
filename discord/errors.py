@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -23,11 +23,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
-
-try:
-    import http.client as httplib
-except ImportError:
-    import httplib
 
 class DiscordException(Exception):
     """Base exception class for discord.py
@@ -56,28 +51,39 @@ class HTTPException(DiscordException):
     .. attribute:: response
 
         The response of the failed HTTP request. This is an
-        instance of `requests.Response`__.
+        instance of `aiohttp.ClientResponse`__.
 
-        __ http://docs.python-requests.org/en/latest/api/#requests.Response
+        __ http://aiohttp.readthedocs.org/en/stable/client_reference.html#aiohttp.ClientResponse
+
+    .. attribute:: text
+
+        The text of the response if it wasn't JSON. Could be None.
     """
 
-    def __init__(self, response, message=None):
+    def __init__(self, response, message=None, text=None):
         self.response = response
+        self.text = text
 
-        if message is None:
-            message = httplib.responses.get(response.status_code, 'HTTP error')
+        fmt = '{0.reason} (status code: {0.status})'
+        if message:
+            fmt = fmt + ': {1}'
 
-        message = '{0} (status code: {1.response.status_code})'.format(message, self)
+        super().__init__(fmt.format(self.response, message))
 
-        try:
-            data = response.json()
-            response_error = data['message']
-            if response_error:
-                message = '{}: {}'.format(message, response_error)
-        except:
-            pass
+class Forbidden(HTTPException):
+    """Exception that's thrown for when status code 403 occurs.
 
-        super(HTTPException, self).__init__(message)
+    Subclass of :exc:`HTTPException`
+    """
+    pass
+
+class NotFound(HTTPException):
+    """Exception that's thrown for when status code 404 occurs.
+
+    Subclass of :exc:`HTTPException`
+    """
+    pass
+
 
 class InvalidArgument(ClientException):
     """Exception that's thrown when an argument to a function

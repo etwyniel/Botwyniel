@@ -24,42 +24,33 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
-class Game:
-    """Represents a Discord game.
+from enum import Enum
 
-    Supported Operations:
-
-    +-----------+------------------------------------+
-    | Operation |            Description             |
-    +===========+====================================+
-    | x == y    | Checks if two games are equal.     |
-    +-----------+------------------------------------+
-    | x != y    | Checks if two games are not equal. |
-    +-----------+------------------------------------+
-    | hash(x)   | Return the games's hash.           |
-    +-----------+------------------------------------+
-    | str(x)    | Returns the games's name.          |
-    +-----------+------------------------------------+
-
-    Attributes
-    -----------
-    name : str
-        The game's name.
-    """
-
-    __slots__ = ['name']
-
-    def __init__(self, **kwargs):
-        self.name = kwargs.get('name')
+class ChannelType(Enum):
+    text = 'text'
+    voice = 'voice'
 
     def __str__(self):
-        return self.name
+        return self.value
 
-    def __eq__(self, other):
-        return isinstance(other, Game) and other.name == self.name
+class ServerRegion(Enum):
+    us_west = 'us-west'
+    us_east = 'us-east'
+    us_south = 'us-south'
+    us_central = 'us-central'
+    singapore = 'singapore'
+    london = 'london'
+    sydney = 'sydney'
+    amsterdam = 'amsterdam'
+    frankfurt = 'frankfurt'
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def __str__(self):
+        return self.value
 
-    def __hash__(self):
-        return hash(self.name)
+class Status(Enum):
+    online = 'online'
+    offline = 'offline'
+    idle = 'idle'
+
+    def __str__(self):
+        return self.value

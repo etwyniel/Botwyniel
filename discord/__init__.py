@@ -6,7 +6,7 @@ Discord API Wrapper
 
 A basic wrapper for the Discord API.
 
-:copyright: (c) 2015 Rapptz
+:copyright: (c) 2015-2016 Rapptz
 :license: MIT, see LICENSE for more details.
 
 """
@@ -14,9 +14,8 @@ A basic wrapper for the Discord API.
 __title__ = 'discord'
 __author__ = 'Rapptz'
 __license__ = 'MIT'
-__copyright__ = 'Copyright 2015 Rapptz'
-__version__ = '0.9.2'
-__build__ = 0x009020
+__copyright__ = 'Copyright 2015-2016 Rapptz'
+__version__ = '0.10.0-alpha'
 
 from .client import Client
 from .user import User
@@ -32,19 +31,16 @@ from .colour import Color, Colour
 from .invite import Invite
 from .object import Object
 from . import utils
+from . import opus
+from .voice_client import VoiceClient
+from .enums import ChannelType, ServerRegion, Status
+from collections import namedtuple
 
 import logging
-import warnings
 
-_warning_message = """
-The next major version of discord.py (v0.10.0) will have major breaking changes
-that will require updating/changing your code.
-Please check the migrating guide to alleviate yourself of unexpected issues.
-http://discordpy.readthedocs.org/en/latest/migrating.html
-It is strongly recommended to make the switch as soon as possible.
-"""
+VersionInfo = namedtuple('VersionInfo', 'major minor micro releaselevel serial')
 
-warnings.warn(_warning_message, UserWarning)
+version_info = VersionInfo(major=0, minor=10, micro=0, releaselevel='alpha', serial=0)
 
 try:
     from logging import NullHandler

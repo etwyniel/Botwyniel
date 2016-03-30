@@ -3,7 +3,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -25,8 +25,10 @@ DEALINGS IN THE SOFTWARE.
 """
 
 from .user import User
-from .utils import parse_time
 from .game import Game
+from .utils import parse_time
+from .enums import Status
+from .colour import Colour
 
 class Member(User):
     """Represents a Discord member to a :class:`Server`.
@@ -34,59 +36,53 @@ class Member(User):
     This is a subclass of :class:`User` that extends more functionality
     that server members have such as roles and permissions.
 
-    Instance attributes:
-
-    .. attribute:: deaf
-
-        A boolean that specifies if the member is currently deafened by the server.
-    .. attribute:: mute
-
-        A boolean that specifies if the member is currently muted by the server.
-    .. attribute:: self_mute
-
-        A boolean that specifies if the member is currently muted by their own accord.
-    .. attribute:: self_deaf
-
-        A boolean that specifies if the member is currently deafened by their own accord.
-    .. attribute:: is_afk
-
-        A boolean that specifies if the member is currently in the AFK channel in the server.
-    .. attribute:: voice_channel
-
-        A voice :class:`Channel` that the member is currently connected to. None if the member
+    Attributes
+    ----------
+    deaf : bool
+        Indicates if the member is currently deafened by the server.
+    mute : bool
+        Indicates if the member is currently muted by the server.
+    self_mute : bool
+        Indicates if the member is currently muted by their own accord.
+    self_deaf : bool
+        Indicates if the member is currently deafened by their own accord.
+    is_afk : bool
+        Indicates if the member is currently in the AFK channel in the server.
+    voice_channel : :class:`Channel`
+        The voice channel that the member is currently connected to. None if the member
         is not currently in a voice channel.
-    .. attribute:: roles
-
+    roles
         A list of :class:`Role` that the member belongs to. Note that the first element of this
         list is always the default '@everyone' role.
-    .. attribute:: joined_at
-
+    joined_at : `datetime.datetime`
         A datetime object that specifies the date and time in UTC that the member joined the server for
         the first time.
-    .. attribute:: status
-
-        A string that denotes the user's status. Can be 'online', 'offline' or 'idle'.
-    .. attribute:: game
-
-        A dictionary representing the game that the user is currently playing. None if no game is being played.
-    .. attribute:: server
-
-        The :class:`Server` that the member belongs to.
+    status : :class:`Status`
+        The member's status. There is a chance that the status will be a ``str``
+        if it is a value that is not recognised by the enumerator.
+    game : :class:`Game`
+        The game that the user is currently playing. Could be None if no game is being played.
+    server : :class:`Server`
+        The server that the member belongs to.
     """
 
+    __slots__ = [ 'deaf', 'mute', 'self_mute', 'self_deaf', 'is_afk',
+                  'voice_channel', 'roles', 'joined_at', 'status', 'game',
+                  'server' ]
+
     def __init__(self, **kwargs):
-        super(Member, self).__init__(**kwargs.get('user'))
+        super().__init__(**kwargs.get('user'))
         self.deaf = kwargs.get('deaf')
         self.mute = kwargs.get('mute')
         self.joined_at = parse_time(kwargs.get('joined_at'))
-        self.roles = kwargs.get('roles')
-        self.status = 'offline'
-        game = kwargs.get('game', None)
-        self.game = game and Game(**game)
+        self.roles = kwargs.get('roles', [])
+        self.status = Status.offline
+        game = kwargs.get('game', {})
+        self.game = Game(**game) if game else None
         self.server = kwargs.get('server', None)
-        self.update_voice_state(mute=self.mute, deaf=self.deaf)
+        self._update_voice_state(mute=self.mute, deaf=self.deaf)
 
-    def update_voice_state(self, **kwargs):
+    def _update_voice_state(self, **kwargs):
         self.self_mute = kwargs.get('self_mute', False)
         self.self_deaf = kwargs.get('self_deaf', False)
         self.is_afk = kwargs.get('suppress', False)
@@ -109,3 +105,20 @@ class Member(User):
                 if self.voice_channel is not None:
                     self.voice_channel.voice_members.append(self)
 
+    @property
+    def colour(self):
+        """A property that returns a :class:`Colour` denoting the rendered colour
+        for the member. If the default colour is the one rendered then an instance
+        of :meth:`Colour.default` is returned.
+
+        There is an alias for this under ``color``.
+        """
+
+        # highest order of the colour is the one that gets rendered.
+        if self.roles:
+            role = max(self.roles, key=lambda r: r.position)
+            return role.colour
+        else:
+            return Colour.default()
+
+    color = colour

@@ -2,7 +2,7 @@
 """
 The MIT License (MIT)
 
-Copyright (c) 2015 Rapptz
+Copyright (c) 2015-2016 Rapptz
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the "Software"),
@@ -23,7 +23,9 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
-class Object(object):
+from .utils import snowflake_time
+
+class Object:
     """Represents a generic Discord object.
 
     The purpose of this class is to allow you to create 'miniature'
@@ -37,10 +39,16 @@ class Object(object):
     receive this class rather than the actual data class. These cases are
     extremely rare.
 
-    .. attribute:: id
-
+    Attributes
+    -----------
+    id : str
         The ID of the object.
     """
 
     def __init__(self, id):
         self.id = id
+
+    @property
+    def created_at(self):
+        """Returns the private channel's creation time in UTC."""
+        return utils.snowflake_time(self.id)
