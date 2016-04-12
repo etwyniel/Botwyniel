@@ -160,7 +160,8 @@ CHAMPIONS_BY_ID = {
     10: 'Kayle',
     254: 'Vi',
     420: 'Illaoi',
-    202: 'Jhin'
+    202: 'Jhin',
+    136: 'Aurelion Sol'
 }
 
 CHAMPION_IDS = [
@@ -292,5 +293,6 @@ CHAMPION_IDS = [
     ['Pantheon', 80],
     ['TahmKench', 223],
     ['Illaoi', 420],
-    ['Jhin', 202]
+    ['Jhin', 202],
+    ['Aurelion Sol', 136]
 ]

@@ -442,28 +442,26 @@ class Client:
     # login state management
 
     @asyncio.coroutine
-    def login(self, email, password):
-        """|coro|
+    def _login_1(self, token):
+        log.info('logging in using static token')
+        self.token = token
+        self.email = None
+        self.headers['authorization'] = 'Bot {}'.format(self.token)
+        resp = yield from self.session.get(endpoints.ME, headers=self.headers)
+        yield from resp.release()
+        log.debug(request_logging_format.format(method='GET', response=resp))
 
-        Logs in the client with the specified credentials.
+        if resp.status != 200:
+            if resp.status == 401:
+                raise LoginFailure('Improper token has been passed.')
+            else:
+                raise HTTPException(resp, None)
 
-        Parameters
-        ----------
-        email : str
-            The email used to login.
-        password : str
-            The password used to login.
+        log.info('token auth returned status code {}'.format(resp.status))
+        self._is_logged_in.set()
 
-        Raises
-        ------
-        LoginFailure
-            The wrong credentials are passed.
-        HTTPException
-            An unknown HTTP related error occurred,
-            usually when it isn't 200 or the known incorrect credentials
-            passing status code.
-        """
-
+    @asyncio.coroutine
+    def _login_2(self, email, password):
         # attempt to read the token from cache
         if self.cache_auth:
             yield from self._login_via_cache(email, password)
@@ -497,6 +495,44 @@ class Client:
         # let's make sure we don't have to do it again
         if self.cache_auth:
             self._update_cache(email, password)
+
+    @asyncio.coroutine
+    def login(self, *args):
+        """|coro|
+
+        Logs in the client with the specified credentials.
+
+        This function can be used in two different ways.
+
+        .. code-block:: python
+
+            await client.login('token')
+
+            # or
+
+            await client.login('email', 'password')
+
+        More than 2 parameters or less than 1 parameter raises a
+        :exc:`TypeError`.
+
+        Raises
+        ------
+        LoginFailure
+            The wrong credentials are passed.
+        HTTPException
+            An unknown HTTP related error occurred,
+            usually when it isn't 200 or the known incorrect credentials
+            passing status code.
+        TypeError
+            The incorrect number of parameters is passed.
+        """
+
+        n = len(args)
+        if n in (2, 1):
+            yield from getattr(self, '_login_' + str(n))(*args)
+        else:
+            raise TypeError('login() takes 1 or 2 positional arguments but {} were given'.format(n))
+
 
     @asyncio.coroutine
     def logout(self):
@@ -544,9 +580,9 @@ class Client:
 
     @asyncio.coroutine
     def close(self):
-        """Closes the websocket connection.
+        """|coro|
 
-        To reconnect the websocket connection, :meth:`connect` must be used.
+        Closes the connection to discord.
         """
         if self.is_closed:
             return
@@ -565,15 +601,15 @@ class Client:
         self._is_ready.clear()
 
     @asyncio.coroutine
-    def start(self, email, password):
+    def start(self, *args):
         """|coro|
 
         A shorthand coroutine for :meth:`login` + :meth:`connect`.
         """
-        yield from self.login(email, password)
+        yield from self.login(*args)
         yield from self.connect()
 
-    def run(self, email, password):
+    def run(self, *args):
         """A blocking call that abstracts away the `event loop`_
         initialisation from you.
 
@@ -584,7 +620,7 @@ class Client:
         Roughly Equivalent to: ::
 
             try:
-                loop.run_until_complete(start(email, password))
+                loop.run_until_complete(start(*args))
             except KeyboardInterrupt:
                 loop.run_until_complete(logout())
                 # cancel all tasks lingering
@@ -599,7 +635,7 @@ class Client:
         """
 
         try:
-            self.loop.run_until_complete(self.start(email, password))
+            self.loop.run_until_complete(self.start(*args))
         except KeyboardInterrupt:
             self.loop.run_until_complete(self.logout())
             pending = asyncio.Task.all_tasks()
@@ -1413,12 +1449,13 @@ class Client:
         yield from response.release()
 
     @asyncio.coroutine
-    def edit_profile(self, password, **fields):
+    def edit_profile(self, password=None, **fields):
         """|coro|
 
         Edits the current profile of the client.
 
-        All fields except ``password`` are optional.
+        If a bot account is used then the password field is optional,
+        otherwise it is required.
 
         The profile is **not** edited in place.
 
@@ -1434,7 +1471,8 @@ class Client:
         Parameters
         -----------
         password : str
-            The current password for the client's account.
+            The current password for the client's account. Not used
+            for bot accounts.
         new_password : str
             The new password you wish to change to.
         email : str
@@ -1451,6 +1489,8 @@ class Client:
             Editing your profile failed.
         InvalidArgument
             Wrong image format passed for ``avatar``.
+        ClientException
+            Password is required for non-bot accounts.
         """
 
         try:
@@ -1463,13 +1503,22 @@ class Client:
             else:
                 avatar = None
 
+        not_bot_account = not self.user.bot
+        if not_bot_account and password is None:
+            raise ClientException('Password is required for non-bot accounts.')
+
         payload = {
             'password': password,
-            'new_password': fields.get('new_password'),
-            'email': fields.get('email', self.email),
             'username': fields.get('username', self.user.name),
             'avatar': avatar
         }
+
+        if not_bot_account:
+            payload['email'] = fields.get('email', self.email)
+
+            if 'new_password' in fields:
+                payload['new_password'] = fields['new_password']
+
 
         r = yield from self.session.patch(endpoints.ME, data=utils.to_json(payload), headers=self.headers)
         log.debug(request_logging_format.format(method='PATCH', response=r))
@@ -1477,12 +1526,14 @@ class Client:
 
         data = yield from r.json()
         log.debug(request_success_log.format(response=r, json=payload, data=data))
-        self.token = data['token']
-        self.email = data['email']
-        self.headers['authorization'] = self.token
 
-        if self.cache_auth:
-            self._update_cache(self.email, password)
+        if not_bot_account:
+            self.token = data['token']
+            self.email = data['email']
+            self.headers['authorization'] = self.token
+
+            if self.cache_auth:
+                self._update_cache(self.email, password)
 
     @asyncio.coroutine
     def change_status(self, game=None, idle=False):

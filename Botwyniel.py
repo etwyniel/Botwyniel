@@ -12,10 +12,7 @@ from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
 
-print(discord.__version__)
-if not discord.opus.is_loaded():
-    discord.opus.load_opus('opus')
-    
+
 class VoiceEntry:
     def __init__(self, message, song):
         self.requester = message.author
@@ -94,7 +91,7 @@ class Bot(discord.Client):
     async def on_ready(self):
         print('Logged in as ' + self.user.name)
         self.list_servers()
-        self.log("Botwyniel initialized")
+        await self.log("Botwyniel initialized")
         chans = self.servs["Etwyniel's"].channels
         for c in chans:
             if str(c.type) != 'text':
@@ -118,8 +115,8 @@ class Bot(discord.Client):
             await self.play_song(message)
         elif message.content.startswith('0!'):
             if message.content.split(' ')[0] in self.commands:
-                self.log(str(message.author) + ": " + message.content)
-                self.commands[message.content.split(" ")[0]](message)
+                await self.log(str(message.author) + ": " + message.content)
+                await self.commands[message.content.split(" ")[0]](message)
         elif message.channel.is_private and message.author.id == '109338686889476096':
             try:
                 list_servers()
@@ -145,21 +142,12 @@ class Bot(discord.Client):
         if self.player != None and self.player.is_playing():
             await self.send_message(message.channel, 'Already playing.')
             return None
+        await self.send_typing(message.channel)
         query = message.content[message.content.find(' ')+1:]
         url = self.yt.search_video(query)
-##        subprocess.call('youtube-dl --metadata-from-title "%(artist)s - %(title)s"\
-##--extract-audio --audio-format mp3 --add-metadata ' + url)
-##        video_id = url[url.find('=')+1:]
-##        for f in os.listdir('.'):
-##            if video_id in f:
-##                filename = f
-##                break
-##        await self.songs.put(VoiceEntry(message, filename))
-##        self.current = await self.songs.get()
         self.player = await self.voice.create_ytdl_player(url)
         self.player.start()
-        print(type(self.player))
-        await self.send_message(message.channel, 'Now playing ' + self.player.title + ' (' + self.player.download_url + ')')
+        await self.send_message(message.channel, 'Now playing `' + self.player.title + '`')
 
     async def delete_file(self):
         await self.send_message(self.current.channel, 'Finished playing')
@@ -187,11 +175,11 @@ class Bot(discord.Client):
             to_return = "I have been running for {h}h{m}m and {s}s.".format(h=uptime[0], m=uptime[1], s=uptime[2])
         return to_return
 
-    def send_uptime(self, message):
-        self.send_typing(message.channel)
-        self.send_message(message.channel, self.uptime(message))
+    async def send_uptime(self, message):
+        await self.send_typing(message.channel)
+        await self.send_message(message.channel, self.uptime(message))
 
-    def love(self, message):
+    async def love(self, message):
         outputs = ["You smart. You loyal. You’re grateful. I appreciate that.\
  Go buy your momma a house. Go buy your whole family houses.\
  Put this money in your savings account. Go spend some money for no reason.\
@@ -207,9 +195,9 @@ class Bot(discord.Client):
                    "Ok, I'll kill you last.",
                    "Umm... wrong number.",
                    "Love received!"]
-        self.send_message(message.author, outputs[randrange(len(outputs))])
+        await self.send_message(message.author, outputs[randrange(len(outputs))])
 
-    def status(self, message):
+    async def status(self, message):
         if type(message) == discord.Message:
             message.content = self.truncate(message.content)
             game = discord.Game(name=message.content)
@@ -220,15 +208,15 @@ class Bot(discord.Client):
             self.change_status(game)
             self.current_status = message
 
-    def avatar(self, message):
+    async def avatar(self, message):
         if len(message.mentions) == 0:
-            self.send_message(message.channel, message.author.avatar_url())
+            await self.send_message(message.channel, message.author.avatar_url())
         else:
             try:
                 for user in message.mentions:
-                    self.send_message(message.channel, user.avatar_url())
+                    await self.send_message(message.channel, user.avatar_url())
             except discord.errors.HTTPException:
-                self.send_message(message.channel, "This user does not have an avatar.")
+                await self.send_message(message.channel, "This user does not have an avatar.")
 
     @staticmethod
     def truncate(message):
@@ -260,25 +248,25 @@ class Bot(discord.Client):
             return True
         else: return False
 
-    def join_server(self, message):
+    async def join_server(self, message):
         url = self.truncate(message.content)
         a = self.accept_invite(url)
         try:
             if a == None:
-                self.send_message(message.channel, 'Server joined!')
+                await self.send_message(message.channel, 'Server joined!')
             else:
-                self.send_message(message.channel, 'Failed to join server')
+                await self.send_message(message.channel, 'Failed to join server')
         except:
-            self.send_message(message.channel, 'Failed to join server')
+            await self.send_message(message.channel, 'Failed to join server')
 
-    def rank(self, message):
-        self.send_typing(message.channel)
+    async def rank(self, message):
+        await self.send_typing(message.channel)
         player = self.get_player(message)
         username = player[0]
         region = player[1]
 
         if region.upper() not in self.regions:
-            self.send_message(message.channel, 'Invalid region')
+            await self.send_message(message.channel, 'Invalid region')
             return None
         riot = RiotAPI(self.riot_key, region)
         if username == "me":
@@ -307,16 +295,16 @@ class Bot(discord.Client):
                     username=username,
                     region=region
                 )
-        self.send_message(message.channel, to_return)
+        await self.send_message(message.channel, to_return)
 
-    def gameranks(self, message):
-        self.send_typing(message.channel)
+    async def gameranks(self, message):
+        await self.send_typing(message.channel)
         player = self.get_player(message)
         username = player[0]
         region = player[1]
 
         if region.upper() not in self.regions:
-            self.send_message(message.channel, 'Invalid region')
+            await self.send_message(message.channel, 'Invalid region')
             return None
 
         if username == "me":
@@ -326,7 +314,7 @@ class Bot(discord.Client):
         ranks = riot.get_game_ranks("".join(username.split(" ")))
 
         if not ranks:
-            self.send_message(message.channel, "The summoner {username} is "
+            await self.send_message(message.channel, "The summoner {username} is "
              "not currently in a game or does not exist.".format(
                 username=username
             )
@@ -349,30 +337,30 @@ class Bot(discord.Client):
                     tier=player[2].capitalize(),
                     division=player[3]
                 )
-        self.send_message(message.channel, to_send)
+        await self.send_message(message.channel, to_send)
 
-    def latest_videos(self, message):
+    async def latest_videos(self, message):
         username = self.truncate(message.content)
         try:
-            self.send_message(message.channel, self.yt.latest_vids(username))
+            await self.send_message(message.channel, self.yt.latest_vids(username))
         except IndexError:
-            self.send_message(message.channel, "The {} channel does not seem to exist.".format(username))
+            await self.send_message(message.channel, "The {} channel does not seem to exist.".format(username))
 
-    def search_video(self, message):
+    async def search_video(self, message):
         query = self.truncate(message.content)
         try:
-            self.send_message(message.channel, self.yt.search_video(query))
+            await self.send_message(message.channel, self.yt.search_video(query))
         except IndexError:
-            self.send_message(message.channel, "No video found matching this query.")
+            await self.send_message(message.channel, "No video found matching this query.")
 
-    def get_thumbnail(self, message):
+    async def get_thumbnail(self, message):
         query = self.truncate(message.content)
         try:
-            self.send_message(message.channel, self.yt.get_thumbnail(query))
+            await self.send_message(message.channel, self.yt.get_thumbnail(query))
         except IndexError:
-            self.send_message(message.channel, "No video found matching this query.")
+            await self.send_message(message.channel, "No video found matching this query.")
 
-    def dice(self, message):
+    async def dice(self, message):
         try:
             arguments = self.truncate(message.content)
             n = int(arguments.split('d')[0])
@@ -393,28 +381,28 @@ class Bot(discord.Client):
                 to_return += str(number) + ' = ' + str(sum)
         except:
             to_return = 'Invalid format!'
-        self.send_message(message.channel, to_return)
+        await self.send_message(message.channel, to_return)
 
-    def coin(self, message):
+    async def coin(self, message):
         value = randrange(2)
         if value:
             to_return = 'Heads!'
         else:
             to_return = 'Tails!'
-        self.send_message(message.channel, to_return)
+        await self.send_message(message.channel, to_return)
 
-    def send(self, message):
+    async def send(self, message):
         args = self.truncate(message.content).split(", ")
         server = args[0]
         channel = args[1]
         message.content = ", ".join(args[2:])
         chan = self.channels[self.servs[server]][channel]
-        self.send_typing(chan)
-        self.send_message(chan, message.content)
+        await self.send_typing(chan)
+        await self.send_message(chan, message.content)
 
-    def sendpm(self, message):
+    async def sendpm(self, message):
         m = self.truncate(message.content)
-        self.send_message(message.mentions[0], m)
+        await self.send_message(message.mentions[0], m)
 
     def kill(self, message):
         if self.author_is_admin(message):
@@ -425,17 +413,17 @@ class Bot(discord.Client):
         else:
             self.send_message(message.channel, "This is an admin-only command")
 
-    def free_champs(self, message):
-        self.send_typing(message.channel)
+    async def free_champs(self, message):
+        await self.send_typing(message.channel)
         riot = RiotAPI(self.riot_key)
         free_champs = riot.get_free_champions()
         to_send = "The free champions this week are {champions} and {last}.".format(
             champions=", ".join(free_champs[0:len(free_champs) - 1]),
             last=free_champs[len(free_champs) - 1]
         )
-        self.send_message(message.channel, to_send)
+        await self.send_message(message.channel, to_send)
 
-    def eightball(self, message):
+    async def eightball(self, message):
         """THERE YOU GO VANERI!"""
         outputs = ["Hell no.",
                    "Absolutely not!",
@@ -467,30 +455,30 @@ class Bot(discord.Client):
                    "Cannot predict now.",
                    "As I see it, yes."]
         to_send = outputs[randrange(len(outputs))]
-        self.send_message(message.channel, to_send)
+        await self.send_message(message.channel, to_send)
         self.log("Answer: " + to_send)
 
-    def execute(self, message):
+    async def execute(self, message):
         if not self.author_is_admin(message):
-            self.send_message(message.channel, "This is an admin-only command.")
+            await self.send_message(message.channel, "This is an admin-only command.")
             return None
         try:
             exec(self.truncate(message.content))
         except Exception as e:
             self.log(str(e))
-            self.send_message(message.channel, "Error occured: " + str(e))
+            await self.send_message(message.channel, "Error occured: " + str(e))
             
-    def suggest(self, message):
+    async def suggest(self, message):
         suggestion = self.truncate(message.content)
-        self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.name + ': ' + suggestion)
-        self.send_message(message.channel, "Thanks for the suggestion!")
+        await self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.name + ': ' + suggestion)
+        await self.send_message(message.channel, "Thanks for the suggestion!")
 
-    def info(self, message):
-        self.send_message(message.channel, "Python bot made by Etwyniel, using discord.py")
+    async def info(self, message):
+        await self.send_message(message.channel, "Python bot made by Etwyniel, using discord.py")
 
-    def help(self, message):
+    async def help(self, message):
         if self.truncate(message.content) == "":
-            self.send_message(message.author, "The available commands are:\n\
+            await self.send_message(message.author, "The available commands are:\n\
             **0!rank** *username*, *region*\*\n\
             **0!gameranks** *username*, *region*\*\n\
             **0!avatar** @*user*\n\
@@ -511,17 +499,17 @@ class Bot(discord.Client):
             **optional, default is euw.*\n\n\
             Please type '0!help *command*' for further instructions.")
         elif self.truncate(message.content) in self.commands:
-            self.send_message(message.author, self.commands_help[self.truncate(message.content)])
+            await self.send_message(message.author, self.commands_help[self.truncate(message.content)])
         else:
-            self.send_message(message.author, "Unknown command.")
+            await self.send_message(message.author, "Unknown command.")
 
-    def log(self, event):
+    async def log(self, event):
         channel = self.channels[self.servs["Etwyniel's"]]["logs"]
         to_send = "[{date}] - *{time}*\n{event}".format(
             date=str(date.today()),
             time="".join(str(datetime.now().time()).split(".")[0])[0:5],
             event=event)
-        self.send_message(channel, to_send)
+        await self.send_message(channel, to_send)
 
 botwyniel = Bot(os.environ['EMAIL'], os.environ['PASSWORD'], wl=["Etwyniel", "Jhysodif"])
 botwyniel.run(botwyniel.username, botwyniel.password)

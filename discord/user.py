@@ -25,23 +25,24 @@ DEALINGS IN THE SOFTWARE.
 """
 
 from .utils import snowflake_time
+from .enums import DefaultAvatar
 
 class User:
     """Represents a Discord user.
 
     Supported Operations:
 
-    +-----------+------------------------------------+
-    | Operation |            Description             |
-    +===========+====================================+
-    | x == y    | Checks if two users are equal.     |
-    +-----------+------------------------------------+
-    | x != y    | Checks if two users are not equal. |
-    +-----------+------------------------------------+
-    | hash(x)   | Return the user's hash.            |
-    +-----------+------------------------------------+
-    | str(x)    | Returns the user's name.           |
-    +-----------+------------------------------------+
+    +-----------+---------------------------------------------+
+    | Operation |                 Description                 |
+    +===========+=============================================+
+    | x == y    | Checks if two users are equal.              |
+    +-----------+---------------------------------------------+
+    | x != y    | Checks if two users are not equal.          |
+    +-----------+---------------------------------------------+
+    | hash(x)   | Return the user's hash.                     |
+    +-----------+---------------------------------------------+
+    | str(x)    | Returns the user's name with discriminator. |
+    +-----------+---------------------------------------------+
 
     Attributes
     -----------
@@ -53,18 +54,21 @@ class User:
         The user's discriminator. This is given when the username has conflicts.
     avatar : str
         The avatar hash the user has. Could be None.
+    bot : bool
+        Specifies if the user is a bot account.
     """
 
-    __slots__ = ['name', 'id', 'discriminator', 'avatar']
+    __slots__ = ['name', 'id', 'discriminator', 'avatar', 'bot']
 
     def __init__(self, **kwargs):
         self.name = kwargs.get('username')
         self.id = kwargs.get('id')
         self.discriminator = kwargs.get('discriminator')
         self.avatar = kwargs.get('avatar')
+        self.bot = kwargs.get('bot', False)
 
     def __str__(self):
-        return self.name
+        return '{0.name}#{0.discriminator}'.format(self)
 
     def __eq__(self, other):
         return isinstance(other, User) and other.id == self.id
@@ -82,6 +86,16 @@ class User:
         if self.avatar is None:
             return ''
         return 'https://discordapp.com/api/users/{0.id}/avatars/{0.avatar}.jpg'.format(self)
+
+    @property
+    def default_avatar(self):
+        """Returns the default avatar for a given user. This is calculated by the user's descriminator"""
+        return DefaultAvatar(int(self.discriminator) % len(DefaultAvatar))
+
+    @property
+    def default_avatar_url(self):
+        """Returns a URL for a user's default avatar."""
+        return 'https://discordapp.com/assets/{0.url}.png'.format(self.default_avatar)
 
     @property
     def mention(self):

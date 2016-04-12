@@ -95,23 +95,42 @@ class Message:
                   '_clean_content', '_raw_channel_mentions', 'nonce' ]
 
     def __init__(self, **kwargs):
+        self._update(**kwargs)
+
+    def _update(self, **data):
         # at the moment, the timestamps seem to be naive so they have no time zone and operate on UTC time.
         # we can use this to our advantage to use strptime instead of a complicated parsing routine.
         # example timestamp: 2015-08-21T12:03:45.782000+00:00
         # sometimes the .%f modifier is missing
-        self.edited_timestamp = utils.parse_time(kwargs.get('edited_timestamp'))
-        self.timestamp = utils.parse_time(kwargs.get('timestamp'))
-        self.tts = kwargs.get('tts')
-        self.content = kwargs.get('content')
-        self.mention_everyone = kwargs.get('mention_everyone')
-        self.embeds = kwargs.get('embeds')
-        self.id = kwargs.get('id')
-        self.channel = kwargs.get('channel')
-        self.author = User(**kwargs.get('author', {}))
-        self.nonce = kwargs.get('nonce')
-        self.attachments = kwargs.get('attachments')
-        self._handle_upgrades(kwargs.get('channel_id'))
-        self._handle_mentions(kwargs.get('mentions', []))
+        self.edited_timestamp = utils.parse_time(data.get('edited_timestamp'))
+        self.timestamp = utils.parse_time(data.get('timestamp'))
+        self.tts = data.get('tts')
+        self.content = data.get('content')
+        self.mention_everyone = data.get('mention_everyone')
+        self.embeds = data.get('embeds')
+        self.id = data.get('id')
+        self.channel = data.get('channel')
+        self.author = User(**data.get('author', {}))
+        self.nonce = data.get('nonce')
+        self.attachments = data.get('attachments')
+        self._handle_upgrades(data.get('channel_id'))
+        self._handle_mentions(data.get('mentions', []))
+
+        # clear the cached slot cache
+        try:
+            del self._raw_mentions
+        except AttributeError:
+            pass
+
+        try:
+            del self._raw_channel_mentions
+        except AttributeError:
+            pass
+        try:
+            del self._clean_content
+        except AttributeError:
+            pass
+
 
     def _handle_mentions(self, mentions):
         self.mentions = []
