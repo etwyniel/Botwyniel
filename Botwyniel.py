@@ -507,7 +507,7 @@ class Bot(discord.Client):
         await self.send_message(channel, to_send)
 
 if not discord.opus.is_loaded():
-    discord.opus.load_opus('libopus.so.0.5.0')
+    discord.opus.load_opus('libopus/build/lib/libopus.so.0.5.0')
     
 botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
 botwyniel.run(os.environ['DISCORD_TOKEN'])
