@@ -1,5 +1,4 @@
 requests==2.8.1
 ws4py==0.3.4
 youtube-dl==2016.03.27
-PyNaCl==1.0.1
-websockets==0.37.0
+git+https://github.com/Rapptz/discord.py@async
