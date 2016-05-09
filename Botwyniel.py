@@ -506,8 +506,12 @@ class Bot(discord.Client):
             event=event)
         await self.send_message(channel, to_send)
 
+<<<<<<< HEAD
 if not discord.opus.is_loaded():
     discord.opus.load_opus('opus')
 
 botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
+=======
+botwyniel = Bot(os.environ['EMAIL'], os.environ['PASSWORD'], wl=["Etwyniel", "Jhysodif"])
+>>>>>>> ae7665197cfde3e230e86ff23a7239b98d546759
 botwyniel.run(os.environ['DISCORD_TOKEN'])
