@@ -49,6 +49,9 @@ def _get_variable(name):
 def when_mentioned(bot, msg):
     """A callable that implements a command prefix equivalent
     to being mentioned, e.g. ``@bot ``."""
+    server = msg.server
+    if server is not None:
+        return '{0.me.mention} '.format(server)
     return '{0.user.mention} '.format(bot)
 
 def when_mentioned_or(*prefixes):
@@ -67,7 +70,7 @@ def when_mentioned_or(*prefixes):
     """
     def inner(bot, msg):
         r = list(prefixes)
-        r.append('{0.user.mention} '.format(bot))
+        r.append(when_mentioned(bot, msg))
         return r
 
     return inner
@@ -232,7 +235,7 @@ class Bot(GroupMixin, discord.Client):
         if ev in self.extra_events:
             for event in self.extra_events[ev]:
                 coro = self._run_extra(event, event_name, *args, **kwargs)
-                discord.utils.create_task(coro, loop=self.loop)
+                discord.compat.create_task(coro, loop=self.loop)
 
     # utility "send_*" functions
 

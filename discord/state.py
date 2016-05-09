@@ -31,7 +31,7 @@ from .message import Message
 from .channel import Channel, PrivateChannel
 from .member import Member
 from .role import Role
-from . import utils
+from . import utils, compat
 from .enums import Status
 
 
@@ -59,7 +59,10 @@ class ConnectionState:
 
     def clear(self):
         self.user = None
+        self.sequence = None
+        self.session_id = None
         self._servers = {}
+        self._voice_clients = {}
         self._private_channels = {}
         # extra dict to look up private channels by user id
         self._private_channels_by_user = {}
@@ -90,6 +93,19 @@ class ConnectionState:
 
         for index in reversed(removed):
             del self._listeners[index]
+
+    @property
+    def voice_clients(self):
+        return self._voice_clients.values()
+
+    def _get_voice_client(self, guild_id):
+        return self._voice_clients.get(guild_id)
+
+    def _add_voice_client(self, guild_id, voice):
+        self._voice_clients[guild_id] = voice
+
+    def _remove_voice_client(self, guild_id):
+        self._voice_clients.pop(guild_id, None)
 
     @property
     def servers(self):
@@ -128,6 +144,7 @@ class ConnectionState:
     def _add_server_from_data(self, guild):
         server = Server(**guild)
         Server.me = property(lambda s: s.get_member(self.user.id))
+        Server.voice_client = property(lambda s: self._get_voice_client(s.id))
         self._add_server(server)
         return server
 
@@ -180,7 +197,7 @@ class ConnectionState:
             self._add_private_channel(PrivateChannel(id=pm['id'],
                                      user=User(**pm['recipient'])))
 
-        utils.create_task(self._delay_ready(), loop=self.loop)
+        compat.create_task(self._delay_ready(), loop=self.loop)
 
     def parse_message_create(self, data):
         channel = self.get_channel(data.get('channel_id'))
@@ -284,7 +301,7 @@ class ConnectionState:
             if role is not None:
                 roles.append(role)
 
-        data['roles'] = roles
+        data['roles'] = sorted(roles, key=lambda r: int(r.id))
         return Member(server=server, **data)
 
     def parse_guild_member_add(self, data):
@@ -314,12 +331,21 @@ class ConnectionState:
             member.name = user['username']
             member.discriminator = user['discriminator']
             member.avatar = user['avatar']
-            member.roles = [server.default_role]
+            member.bot = user.get('bot', False)
+
+            # the nickname change is optional,
+            # if it isn't in the payload then it didn't change
+            if 'nick' in data:
+                member.nick = data['nick']
+
             # update the roles
+            member.roles = [server.default_role]
             for role in server.roles:
                 if role.id in data['roles']:
                     member.roles.append(role)
 
+            # sort the roles by ID since they can be "randomised"
+            member.roles.sort(key=lambda r: int(r.id))
             self.dispatch('member_update', old_member, member)
 
     def _get_create_server(self, data):
@@ -336,6 +362,17 @@ class ConnectionState:
         return self._add_server_from_data(data)
 
     @asyncio.coroutine
+    def _chunk_and_dispatch(self, server, unavailable):
+        yield from self.chunker(server)
+        chunks = list(self.chunks_needed(server))
+        if chunks:
+            yield from asyncio.wait(chunks)
+
+        if unavailable == False:
+            self.dispatch('server_available', server)
+        else:
+            self.dispatch('server_join', server)
+
     def parse_guild_create(self, data):
         unavailable = data.get('unavailable')
         if unavailable == True:
@@ -365,11 +402,8 @@ class ConnectionState:
 
             # since we're not waiting for 'useful' READY we'll just
             # do the chunk request here
-            yield from self.chunker(server)
-            chunks = list(self.chunks_needed(server))
-            if chunks:
-                yield from asyncio.wait(chunks)
-
+            compat.create_task(self._chunk_and_dispatch(server, unavailable), loop=self.loop)
+            return
 
         # Dispatch available if newly available
         if unavailable == False:
@@ -470,7 +504,13 @@ class ConnectionState:
 
     def parse_voice_state_update(self, data):
         server = self._get_server(data.get('guild_id'))
+        user_id = data.get('user_id')
         if server is not None:
+            if user_id == self.user.id:
+                voice = self._get_voice_client(server.id)
+                if voice is not None:
+                    voice.channel = server.get_channel(data.get('channel_id'))
+
             updated_members = server._update_voice_state(data)
             self.dispatch('voice_state_update', *updated_members)
 

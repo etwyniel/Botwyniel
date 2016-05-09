@@ -36,7 +36,24 @@ class Permissions:
     +-----------+------------------------------------------+
     | x != y    | Checks if two permissions are not equal. |
     +-----------+------------------------------------------+
+    | x <= y    | Checks if a permission is a subset       |
+    |           | of another permission.                   |
+    +-----------+------------------------------------------+
+    | x >= y    | Checks if a permission is a superset     |
+    |           | of another permission.                   |
+    +-----------+------------------------------------------+
+    | x < y     | Checks if a permission is a strict       |
+    |           | subset of another permission.            |
+    +-----------+------------------------------------------+
+    | x > y     | Checks if a permission is a strict       |
+    |           | superset of another permission.          |
+    +-----------+------------------------------------------+
     | hash(x)   | Return the permission's hash.            |
+    +-----------+------------------------------------------+
+    | iter(x)   | Returns an iterator of (perm, value)     |
+    |           | pairs. This allows this class to be used |
+    |           | as an iterable in e.g. set/list/dict     |
+    |           | constructions.                           |
     +-----------+------------------------------------------+
 
     The properties provided are two way. You can set and retrieve individual bits using the properties as if they
@@ -63,6 +80,43 @@ class Permissions:
     def __hash__(self):
         return hash(self.value)
 
+    def _perm_iterator(self):
+        for attr in dir(self):
+            # check if it's a property, because if so it's a permission
+            is_property = isinstance(getattr(self.__class__, attr), property)
+            if is_property:
+                yield (attr, getattr(self, attr))
+
+    def __iter__(self):
+        return self._perm_iterator()
+
+    def is_subset(self, other):
+        """Returns True if other has the same or fewer permissions as self."""
+        if isinstance(other, Permissions):
+            return (self.value & other.value) == self.value
+        else:
+            raise TypeError("cannot compare {} with {}".format(self.__class__.__name__, other.__class__name))
+
+    def is_superset(self, other):
+        """Returns True if other has the same or more permissions as self."""
+        if isinstance(other, Permissions):
+            return (self.value | other.value) == self.value
+        else:
+            raise TypeError("cannot compare {} with {}".format(self.__class__.__name__, other.__class__name))
+
+    def is_strict_subset(self, other):
+        """Returns True if the permissions on other are a strict subset of those on self."""
+        return self.is_subset(other) and self != other
+
+    def is_strict_superset(self, other):
+        """Returns True if the permissions on other are a strict superset of those on self."""
+        return self.is_superset(other) and self != other
+
+    __le__ = is_subset
+    __ge__ = is_superset
+    __lt__ = is_strict_subset
+    __gt__ = is_strict_superset
+
     @classmethod
     def none(cls):
         """A factory method that creates a :class:`Permissions` with all
@@ -73,7 +127,7 @@ class Permissions:
     def all(cls):
         """A factory method that creates a :class:`Permissions` with all
         permissions set to True."""
-        return cls(0b00000011111100111111110000111111)
+        return cls(0b00001111111100111111110000111111)
 
     @classmethod
     def all_channel(cls):
@@ -91,7 +145,7 @@ class Permissions:
     def general(cls):
         """A factory method that creates a :class:`Permissions` with all
         "General" permissions set to True."""
-        return cls(0b00000000000000000000000000111111)
+        return cls(0b00001100000000000000000000111111)
 
     @classmethod
     def text(cls):
@@ -320,4 +374,22 @@ class Permissions:
     def use_voice_activation(self, value):
         self._set(25, value)
 
-    # 6 unused
+    @property
+    def change_nicknames(self):
+        """Returns True if a user can change their nickname in the server."""
+        return self._bit(26)
+
+    @change_nicknames.setter
+    def change_nicknames(self, value):
+        self._set(26, value)
+
+    @property
+    def manage_nicknames(self):
+        """Returns True if a user can change other user's nickname in the server."""
+        return self._bit(27)
+
+    @manage_nicknames.setter
+    def manage_nicknames(self, value):
+        self._set(27, value)
+
+    # 4 unused

@@ -29,6 +29,8 @@ import ctypes.util
 import array
 from .errors import DiscordException
 import logging
+import sys
+import os.path
 
 log = logging.getLogger(__name__)
 c_int_ptr = ctypes.POINTER(ctypes.c_int)
@@ -75,8 +77,14 @@ def libopus_loader(name):
     return lib
 
 try:
-    _lib = libopus_loader(ctypes.util.find_library('opus'))
-except:
+    if sys.platform == 'win32':
+        _basedir = os.path.dirname(os.path.abspath(__file__))
+        _bitness = 'x64' if sys.maxsize > 2**32 else 'x86'
+        _filename = os.path.join(_basedir, 'bin', 'libopus-0.{}.dll'.format(_bitness))
+        _lib = libopus_loader(_filename)
+    else:
+        _lib = libopus_loader(ctypes.util.find_library('opus'))
+except Exception as e:
     _lib = None
 
 def load_opus(name):
@@ -156,6 +164,8 @@ APPLICATION_VOIP     = 2048
 APPLICATION_LOWDELAY = 2051
 CTL_SET_BITRATE      = 4002
 CTL_SET_BANDWIDTH    = 4008
+CTL_SET_FEC          = 4012
+CTL_SET_PLP          = 4014
 
 band_ctl = {
     'narrow': 1101,
@@ -181,6 +191,8 @@ class Encoder:
 
         self._state = self._create_state()
         self.set_bitrate(128)
+        self.set_fec(True)
+        self.set_expected_packet_loss_percent(0.15)
         self.set_bandwidth('full')
 
     def __del__(self):
@@ -217,6 +229,20 @@ class Encoder:
 
         if ret < 0:
             log.info('error has happened in set_bandwidth')
+            raise OpusError(ret)
+            
+    def set_fec(self, enabled=True):
+        ret = _lib.opus_encoder_ctl(self._state, CTL_SET_FEC, 1 if enabled else 0)
+        
+        if ret < 0:
+            log.info('error has happened in set_fec')
+            raise OpusError(ret)
+            
+    def set_expected_packet_loss_percent(self, percentage):
+        ret = _lib.opus_encoder_ctl(self._state, CTL_SET_PLP, min(100, max(0, int(percentage * 100))))
+        
+        if ret < 0:
+            log.info('error has happened in set_expected_packet_loss_percent')
             raise OpusError(ret)
 
     def encode(self, pcm, frame_size):

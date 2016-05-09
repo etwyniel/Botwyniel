@@ -75,7 +75,7 @@ def parse_time(timestamp):
     return None
 
 
-def oauth_url(client_id, permissions=None):
+def oauth_url(client_id, permissions=None, server=None, redirect_uri=None):
     """A helper function that returns the OAuth2 URL for inviting the bot
     into servers.
 
@@ -86,10 +86,19 @@ def oauth_url(client_id, permissions=None):
     permissions : :class:`Permissions`
         The permissions you're requesting. If not given then you won't be requesting any
         permissions.
+    server : :class:`Server`
+        The server to pre-select in the authorization screen, if available.
+    redirect_uri : str
+        An optional valid redirect URI.
     """
-    url = 'https://discordapp.com/oauth2/authorize?&client_id={}&scope=bot'.format(client_id)
+    url = 'https://discordapp.com/oauth2/authorize?client_id={}&scope=bot'.format(client_id)
     if permissions is not None:
         url = url + '&permissions=' + str(permissions.value)
+    if server is not None:
+        url = url + "&guild_id=" + server.id
+    if redirect_uri is not None:
+        from urllib.parse import urlencode
+        url = url + "&response_type=code&" + urlencode({'redirect_uri': redirect_uri})
     return url
 
 
@@ -227,7 +236,3 @@ def _bytes_to_base64_data(data):
 def to_json(obj):
     return json.dumps(obj, separators=(',', ':'), ensure_ascii=True)
 
-try:
-    create_task = asyncio.ensure_future
-except AttributeError:
-    create_task = asyncio.async

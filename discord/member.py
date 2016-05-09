@@ -26,7 +26,7 @@ DEALINGS IN THE SOFTWARE.
 
 from .user import User
 from .game import Game
-from .utils import parse_time
+from . import utils
 from .enums import Status
 from .colour import Colour
 
@@ -64,22 +64,25 @@ class Member(User):
         The game that the user is currently playing. Could be None if no game is being played.
     server : :class:`Server`
         The server that the member belongs to.
+    nick : Optional[str]
+        The server specific nickname of the user.
     """
 
     __slots__ = [ 'deaf', 'mute', 'self_mute', 'self_deaf', 'is_afk',
                   'voice_channel', 'roles', 'joined_at', 'status', 'game',
-                  'server' ]
+                  'server', 'nick' ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs.get('user'))
         self.deaf = kwargs.get('deaf')
         self.mute = kwargs.get('mute')
-        self.joined_at = parse_time(kwargs.get('joined_at'))
+        self.joined_at = utils.parse_time(kwargs.get('joined_at'))
         self.roles = kwargs.get('roles', [])
         self.status = Status.offline
         game = kwargs.get('game', {})
         self.game = Game(**game) if game else None
         self.server = kwargs.get('server', None)
+        self.nick = kwargs.get('nick', None)
         self._update_voice_state(mute=self.mute, deaf=self.deaf)
 
     def _update_voice_state(self, **kwargs):
@@ -122,3 +125,21 @@ class Member(User):
             return Colour.default()
 
     color = colour
+
+    @property
+    def mention(self):
+        if self.nick:
+            return '<@!{}>'.format(self.id)
+        return '<@{}>'.format(self.id)
+
+    def mentioned_in(self, message):
+        mentioned = super().mentioned_in(message)
+        if mentioned:
+            return True
+
+        for role in message.role_mentions:
+            has_role = utils.get(self.roles, id=role.id) is not None
+            if has_role:
+                return True
+
+        return False

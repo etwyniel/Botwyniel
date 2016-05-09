@@ -25,7 +25,7 @@ class Bot(discord.Client):
     Mostly designed for League of Legends.
     """
     
-    def __init__(self, username, password, name="Botwyniel", wl=[], **kwargs):
+    def __init__(self, name="Botwyniel", wl=[], **kwargs):
         super().__init__()
         self.player = None
         self.init_time = datetime.now()
@@ -36,8 +36,6 @@ class Bot(discord.Client):
         self.play_next_song = asyncio.Event()
         self.name = name
         self.whitelist = wl
-        self.username = username
-        self.password = password
         self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
         self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
         self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "PBE"]
@@ -93,9 +91,10 @@ class Bot(discord.Client):
         self.list_servers()
         await self.log("Botwyniel initialized")
         chans = self.servs["Etwyniel's"].channels
-        for c in chans:
-            if str(c.type) != 'text':
-                await self.join_voice_channel(c)
+        if not self.is_voice_connected(self.servs["Etwyniel's"]):
+            for c in chans:
+                if str(c.type) != 'text':
+                    await self.join_voice_channel(c)
 
     async def on_message(self, message):
 ##        if message.content == '0!play':
@@ -148,10 +147,6 @@ class Bot(discord.Client):
         self.player = await self.voice.create_ytdl_player(url)
         self.player.start()
         await self.send_message(message.channel, 'Now playing `' + self.player.title + '`')
-
-    async def delete_file(self):
-        await self.send_message(self.current.channel, 'Finished playing')
-        os.remove(self.current.song)
 
     def list_servers(self):
         print("\nAvailable servers:")
@@ -511,5 +506,8 @@ class Bot(discord.Client):
             event=event)
         await self.send_message(channel, to_send)
 
-botwyniel = Bot(os.environ['EMAIL'], os.environ['PASSWORD'], wl=["Etwyniel", "Jhysodif"])
-botwyniel.run(botwyniel.username, botwyniel.password)
+if not discord.opus.is_loaded():
+    discord.opus.load_opus('opus')
+
+botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
+botwyniel.run(os.environ['DISCORD_TOKEN'])

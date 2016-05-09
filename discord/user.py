@@ -125,3 +125,29 @@ class User:
         This is when the user's discord account was created."""
         return snowflake_time(self.id)
 
+    @property
+    def display_name(self):
+        """Returns the user's display name.
+
+        For regular users this is just their username, but
+        if they have a server specific nickname then that
+        is returned instead.
+        """
+        return getattr(self, 'nick', None) or self.name
+
+    def mentioned_in(self, message):
+        """Checks if the user is mentioned in the specified message.
+
+        Parameters
+        -----------
+        message : :class:`Message`
+            The message to check if you're mentioned in.
+        """
+
+        if message.mention_everyone:
+            return True
+
+        if self in message.mentions:
+            return True
+
+        return False
