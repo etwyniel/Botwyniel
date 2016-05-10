@@ -91,7 +91,7 @@ class Bot(discord.Client):
         self.list_servers()
         await self.log("Botwyniel initialized")
         chans = self.servs["Etwyniel's"].channels
-        if not self.is_voice_connected(self.servs["Etwyniel's"]):
+        if discord.opus.is_loaded():
             for c in chans:
                 if str(c.type) != 'text':
                     await self.join_voice_channel(c)
@@ -507,7 +507,8 @@ class Bot(discord.Client):
         await self.send_message(channel, to_send)
 
 if not discord.opus.is_loaded():
-    discord.opus.load_opus('libopus/build/lib/libopus.so.0.5.0')
+    pass
+    #discord.opus.load_opus('libopus/build/lib/libopus.so.0.5.0')
     
 botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
 botwyniel.run(os.environ['DISCORD_TOKEN'])
