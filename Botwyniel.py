@@ -6,6 +6,7 @@ from random import randrange
 import asyncio
 import subprocess
 import os
+from ctypes.util import find_library
 
 import discord
 from RiotAPI import RiotAPI
@@ -95,6 +96,9 @@ class Bot(discord.Client):
             for c in chans:
                 if str(c.type) != 'text':
                     await self.join_voice_channel(c)
+        else:
+            try:
+                discord.opus.load_opus(find_library('opus'))
 
     async def on_message(self, message):
 ##        if message.content == '0!play':
