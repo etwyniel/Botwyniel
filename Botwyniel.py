@@ -462,9 +462,13 @@ class Bot(discord.Client):
             await self.send_message(message.channel, "This is an admin-only command.")
             return None
         try:
-            exec(self.truncate(message.content))
+            c = self.truncate(message.content)
+            if c.startswith('await'):
+                await eval(c.split('await ')[1])
+            else:
+                exec(c)
         except Exception as e:
-            self.log(str(e))
+            await self.log(str(e))
             await self.send_message(message.channel, "Error occured: " + str(e))
             
     async def suggest(self, message):
