@@ -96,7 +96,8 @@ class Bot(discord.Client):
             try:
                 discord.opus.load_opus(find_library('opus'))
             except Exception as e:
-                await self.log('Failed to load opus: ' str(e))
+                print('Failed to load opus: ' + str(e))
+                #await self.log('Failed to load opus: ' str(e))
         for c in chans:
             if str(c.type) != 'text':
                 await self.join_voice_channel(c)
