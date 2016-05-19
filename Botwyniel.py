@@ -92,15 +92,14 @@ class Bot(discord.Client):
         self.list_servers()
         await self.log("Botwyniel initialized")
         chans = self.servs["Etwyniel's"].channels
-        if discord.opus.is_loaded():
-            for c in chans:
-                if str(c.type) != 'text':
-                    await self.join_voice_channel(c)
-        else:
+        if not discord.opus.is_loaded():
             try:
                 discord.opus.load_opus(find_library('opus'))
-            except:
-                pass
+            except Exception as e:
+                await self.log('Failed to load opus: ' str(e))
+        for c in chans:
+            if str(c.type) != 'text':
+                await self.join_voice_channel(c)
 
     async def on_message(self, message):
 ##        if message.content == '0!play':
