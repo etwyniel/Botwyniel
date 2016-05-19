@@ -451,7 +451,7 @@ class Bot(discord.Client):
                    "As I see it, yes."]
         to_send = outputs[randrange(len(outputs))]
         await self.send_message(message.channel, to_send)
-        self.log("Answer: " + to_send)
+        await self.log("Answer: " + to_send)
 
     async def execute(self, message):
         if not self.author_is_admin(message):
