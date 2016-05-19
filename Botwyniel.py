@@ -99,6 +99,8 @@ class Bot(discord.Client):
         else:
             try:
                 discord.opus.load_opus(find_library('opus'))
+            except:
+                pass
 
     async def on_message(self, message):
 ##        if message.content == '0!play':
