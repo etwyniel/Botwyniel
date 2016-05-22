@@ -155,7 +155,7 @@ class Bot(discord.Client):
     def list_servers(self):
         print("\nAvailable servers:")
         for a in self.servers:
-            #print(a.name)
+            print(a.name)
             self.servs[a.name] = a
             ch_dict = {}
             for channel in a.channels:
