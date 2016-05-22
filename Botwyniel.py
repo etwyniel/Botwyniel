@@ -98,7 +98,7 @@ class Bot(discord.Client):
                 #await self.log('Failed to load opus: ' str(e))
         for c in chans:
             if str(c.type) != 'text':
-                await self.join_voice_channel(c)
+                self.voice = await self.join_voice_channel(c)
 
     async def on_message(self, message):
 ##        if message.content == '0!play':
