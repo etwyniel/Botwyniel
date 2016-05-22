@@ -135,7 +135,7 @@ class Bot(discord.Client):
             except (InvalidArgument, HTTPException):
                     self.send_message(message.channel, 'Failed to accept invite')
 
-    def pause(self, message):
+    async def pause(self, message):
         if self.player != None and self.player.is_playing():
             self.player.pause()
         else:
