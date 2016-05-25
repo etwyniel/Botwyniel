@@ -208,11 +208,11 @@ class Bot(discord.Client):
 
     async def avatar(self, message):
         if len(message.mentions) == 0:
-            await self.send_message(message.channel, message.author.avatar_url())
+            await self.send_message(message.channel, message.author.avatar_url)
         else:
             try:
                 for user in message.mentions:
-                    await self.send_message(message.channel, user.avatar_url())
+                    await self.send_message(message.channel, user.avatar_url)
             except discord.errors.HTTPException:
                 await self.send_message(message.channel, "This user does not have an avatar.")
 
