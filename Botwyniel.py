@@ -61,6 +61,7 @@ class Bot(discord.Client):
                          "0!suggest": self.suggest,
                          "0!play": self.play_song,
                          "0!pause": self.pause,
+                         "0!info": self.info,
                          "0!ytplay": None
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
@@ -472,8 +473,11 @@ class Bot(discord.Client):
             
     async def suggest(self, message):
         suggestion = self.truncate(message.content)
-        await self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.name + ': ' + suggestion)
-        await self.send_message(message.channel, "Thanks for the suggestion!")
+        if suggestion != "":
+            await self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.name + ': ' + suggestion)
+            await self.send_message(message.channel, "Thanks for the suggestion!")
+        else:
+            await self.send_message(message.channel, "Please enter a suggestion.")
 
     async def info(self, message):
         await self.send_message(message.channel, "Python bot made by Etwyniel, using discord.py")
