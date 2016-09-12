@@ -28,7 +28,8 @@ PLATFORM_IDS = {
     "oce": "OC1",
     "tr": "TR1",
     "ru": "RU",
-    "pbe": "PBE1"
+    "pbe": "PBE1",
+    "jp": "JP"
 }
 
 CHAMPIONS_BY_ID = {
