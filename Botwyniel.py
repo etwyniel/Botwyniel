@@ -39,7 +39,7 @@ class Bot(discord.Client):
         self.whitelist = wl
         self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
         self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
-        self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "PBE"]
+        self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "JP", "PBE"]
         self.commands = {"0!rank": self.rank,
                          "0!gameranks": self.gameranks,
                          "0!uptime": self.send_uptime,
