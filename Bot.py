@@ -511,5 +511,5 @@ class Bot(discord.Client):
             event=event)
         await self.send_message(channel, to_send)
 
-botwyniel = Bot("etwyspam@gmail.com", "almg0308", wl=["Etwyniel", "Jhysodif"])
+botwyniel = Bot(input("Email: "), input("Password: "), wl=["Etwyniel", "Jhysodif"])
 botwyniel.run(botwyniel.username, botwyniel.password)
