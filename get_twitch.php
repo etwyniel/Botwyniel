@@ -1,5 +1,5 @@
 <?php
-    $mysql = new mysqli('$_ENV['CLEARDB_DATABASE_URL']);
+    $mysql = new mysqli($_ENV['CLEARDB_DATABASE_URL']);
     $query = "SELECT * FROM twitch_follow";
     $r = $mysql->query($query);
     echo "{";
