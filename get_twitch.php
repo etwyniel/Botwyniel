@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <?php
     $db_url = $_ENV['CLEARDB_DATABASE_URL'];
-    $db_server = substr($db_url, strpos($db_url, "@"), strpos($db_url, "/h") - strpos($db_url, "@"));
-    $db_username = substr($db_url, strpos($db_url, "//") + 2, strpos($db_url, ":1") - strpos($db_url, "//"));
+    $db_server = substr($db_url, strpos($db_url, "@") + 1, strpos($db_url, "/h") - strpos($db_url, "@"));
+    $db_username = substr($db_url, strpos($db_url, "//") + 2, strpos($db_url, ":1") - strpos($db_url, "//") - 2);
     $db_password = substr($db_url, strpos($db_url, ":1") + 1, strpos($db_url, "@") - strpos($db_url, ":1") - 1);
     //TEMPORARY !!
     echo $db_server . "<br>";
