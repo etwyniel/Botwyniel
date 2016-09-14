@@ -7,6 +7,7 @@ import asyncio
 import subprocess
 import os
 from ctypes.util import find_library
+import requests
 
 import discord
 from RiotAPI import RiotAPI
@@ -516,6 +517,13 @@ class Bot(discord.Client):
             time="".join(str(datetime.now().time()).split(".")[0])[0:5],
             event=event)
         await self.send_message(channel, to_send)
+    
+    def check_update(self):
+        league_url = "http://euw.leagueoflegends.com/en/news/game-updates/patch/"
+        db_url = "http://botwyniel.herokuapp.com/get_data.php"
+        args = {'name': 'last_update'}
+        current_version = requests.get(db_url, params=args)
+        print(current_version)
 
 if not discord.opus.is_loaded():
     pass
