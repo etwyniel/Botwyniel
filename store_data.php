@@ -10,7 +10,6 @@
     
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_database);
     
-    $query = "CREATE TABLE botwyniel_data (name VARCHAR(16) NOT NULL PRIMARY KEY, val VARCHAR(32) NOT NULL);";
     if ($mysql->query($query)) {
         echo "Table created successfully.<br>";
     } else {
@@ -18,7 +17,11 @@
     }
     
     $query = "INSERT INTO botwyniel_data (name, val) VALUES ('last update', '6.17');";
-    
+    if ($mysql->query($query)) {
+        echo "Values added successfully.<br>";
+    } else {
+        die("Failed to add values: " . $mysql->error);
+    }
     $mysql->close();
     for ($a = 0; $a <= $r->num_rows - 2; $a++) {
         $user = $r->fetch_assoc();
