@@ -10,14 +10,14 @@
     
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_database);
     
-    $query = "CREATE TABLE botwyniel_data (key VARCHAR(16) NOT NULL PRIMARY KEY, val VARCHAR(32) NOT NULL);";
+    $query = "CREATE TABLE botwyniel_data (name VARCHAR(16) NOT NULL PRIMARY KEY, val VARCHAR(32) NOT NULL);";
     if ($mysql->query($query)) {
         echo "Table created successfully.<br>";
     } else {
         die("Failed to create table: " . $mysql->error);
     }
     
-    $query = "INSERT INTO botwyniel_data (key, val) VALUES ('last update', '6.17');";
+    $query = "INSERT INTO botwyniel_data (name, val) VALUES ('last update', '6.17');";
     
     $mysql->close();
     for ($a = 0; $a <= $r->num_rows - 2; $a++) {
