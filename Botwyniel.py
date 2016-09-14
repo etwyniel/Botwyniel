@@ -522,7 +522,7 @@ class Bot(discord.Client):
         league_url = "http://euw.leagueoflegends.com/en/news/game-updates/patch/"
         db_url = "http://botwyniel.herokuapp.com/get_data.php"
         args = {'name': 'last_update'}
-        current_version = requests.get(db_url, params=args)
+        current_version = requests.get(db_url, params=args).text
         print(current_version)
 
 if not discord.opus.is_loaded():
