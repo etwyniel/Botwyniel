@@ -1,12 +1,12 @@
 <?php
-    $db_url = $_ENV['CLEARDB_DATABASE_URL']
-    $db_server = substr($db_url, $db_url[strpos($db_url, "@")], $db_url[strpos($db_url, "/h")] - $db_url[strpos($db_url, "@")])
-    $db_username = substr($db_url, $db_url[strpos($db_url, "//")], $db_url[strpos($db_url, ":")] - $db_url[strpos($db_url, "//")])
-    $db_server = substr($db_url, $db_url[strpos($db_url, ":")], $db_url[strpos($db_url, "@")] - $db_url[strpos($db_url, ":")])
+    $db_url = $_ENV['CLEARDB_DATABASE_URL'];
+    $db_server = substr($db_url, $db_url[strpos($db_url, "@")], $db_url[strpos($db_url, "/h")] - $db_url[strpos($db_url, "@")]);
+    $db_username = substr($db_url, $db_url[strpos($db_url, "//")], $db_url[strpos($db_url, ":")] - $db_url[strpos($db_url, "//")]);
+    $db_server = substr($db_url, $db_url[strpos($db_url, ":")], $db_url[strpos($db_url, "@")] - $db_url[strpos($db_url, ":")]);
     //TEMPORARY !!
-    echo $db_server
-    echo $db_username
-    echo $db_password
+    echo $db_server;
+    echo $db_username;
+    echo $db_password;
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_username);
     $query = "SELECT * FROM twitch_follow";
     $r = $mysql->query($query);
