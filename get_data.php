@@ -12,6 +12,7 @@
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_database);
     
     $query = "SELECT * FROM botwyniel_data WHERE name = '" . $key . "');";
+    echo $query . "<br>";
     $r = $mysql->query($query);
     while($row = $r->fetch_assoc()) {
     echo $row['val'];
