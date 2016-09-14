@@ -9,8 +9,6 @@
     $key = $_POST['key'];
     $value = $_POST['value'];
     
-    echo $db_database . "<br>";
-    
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_database);
     
     $query = "SELECT * FROM botwyniel_data WHERE name == '" . $key . "');";
@@ -18,5 +16,6 @@
     while($row = $r->fetch_assoc()) {
     echo $row['val'];
     }
+    echo $mysql->error;
     $mysql->close();
 ?>
