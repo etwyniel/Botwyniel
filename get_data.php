@@ -16,7 +16,7 @@
     $query = "SELECT * FROM botwyniel_data WHERE name == '" . $key . "');";
     $r = $mysql->query($query);
     while($row = $r->fetch_assoc()) {
-    echo $row['name'] . ": " . $row['val'];
+    echo $row['val'];
     }
     $mysql->close();
 ?>
