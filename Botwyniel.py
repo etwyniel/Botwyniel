@@ -526,7 +526,7 @@ class Bot(discord.Client):
         print(current_version)
         patch_page = requests.get(league_url).text
         index = patch_page.index("lol-core-file-formatter")
-        print(patch_page[index:50]
+        print(patch_page[index:50])
         print(patch_page.rfind("<", 0, index))
         print(patch_page[index:].find(">"))
         field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">")]
