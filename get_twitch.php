@@ -5,7 +5,7 @@
     $db_username = substr($db_url, strpos($db_url, "//") + 2, strpos($db_url, ":1") - strpos($db_url, "//") - 2);
     $db_password = substr($db_url, strpos($db_url, ":1") + 1, strpos($db_url, "@") - strpos($db_url, ":1") - 1);
     
-    $mysql = new mysqli_conn($db_server, $db_username, $db_password, $db_username);
+    $mysql = new mysqli($db_server, $db_username, $db_password, $db_username);
     
     $query = "CREATE TABLE IF NOT EXISTS botwyniel_data (key VARCHAR(32)) ";
     if ($mysql->query($query)) {
