@@ -6,8 +6,8 @@
     $db_password = substr($db_url, strpos($db_url, ":1") + 1, strpos($db_url, "@") - strpos($db_url, ":1") - 1);
     $db_database = substr($db_url, strpos($db_url, "/h") + 1, strpos($db_url, "?") - strpos($db_url, "/h") - 1);
     
-    $key = $_POST['key'];
-    $value = $_POST['value'];
+    $key = $_GET['key'];
+    $value = $_GET['value'];
     
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_database);
     
