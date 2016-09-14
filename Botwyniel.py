@@ -524,6 +524,11 @@ class Bot(discord.Client):
         args = {'name': 'last update'}
         current_version = requests.get(db_url, params=args).text
         print(current_version)
+        patch_page = requests.get(league_url).text
+        index = patch_page.index("lol-core-file-formatter")
+        field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">")]
+        latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:field.index('"')]]
+        print(latest_version)
 
 if not discord.opus.is_loaded():
     pass
