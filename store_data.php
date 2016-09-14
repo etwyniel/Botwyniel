@@ -10,7 +10,7 @@
     
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_database);
     
-    $query = "CREATE TABLE IF NOT EXISTS botwyniel_data (key VARCHAR(16), value VARCHAR(32)) ";
+    $query = "CREATE TABLE botwyniel_data (key VARCHAR(16) NOT NULL PRIMARY KEY, val VARCHAR(32) NOT NULL) ";
     if ($mysql->query($query)) {
         echo "Table created successfully.<br>";
     } else {
