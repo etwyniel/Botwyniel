@@ -526,7 +526,9 @@ class Bot(discord.Client):
         print(current_version)
         patch_page = requests.get(league_url).text
         index = patch_page.index("lol-core-file-formatter")
+        print("1")
         field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">")]
+        print("2")
         latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:field.index('"')]]
         print(latest_version)
 
