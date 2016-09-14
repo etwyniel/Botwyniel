@@ -10,12 +10,6 @@
     
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_database);
     
-    if ($mysql->query($query)) {
-        echo "Table created successfully.<br>";
-    } else {
-        die("Failed to create table: " . $mysql->error);
-    }
-    
     $query = "INSERT INTO botwyniel_data (name, val) VALUES ('last update', '6.17');";
     if ($mysql->query($query)) {
         echo "Values added successfully.<br>";
