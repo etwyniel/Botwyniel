@@ -529,7 +529,7 @@ class Bot(discord.Client):
         print(patch_page[index:index+50])
         print(patch_page.rfind("<", 0, index))
         print(patch_page[index:].find(">"))
-        field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">")]
+        field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
         print(2)
         latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:field.index('"')]]
         print(latest_version)
