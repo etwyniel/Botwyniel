@@ -17,7 +17,7 @@
         die("Failed to create table: " . $mysql->error);
     }
     
-    $query = "INSERT INTO botwyniel_data (key, value) VALUES ('last update', '6.17')"
+    $query = "INSERT INTO botwyniel_data (key, value) VALUES ('last update', '6.17')";
     
     $mysql->close();
     for ($a = 0; $a <= $r->num_rows - 2; $a++) {
