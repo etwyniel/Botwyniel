@@ -1,12 +1,13 @@
+<!DOCTYPE html>
 <?php
     $db_url = $_ENV['CLEARDB_DATABASE_URL'];
     $db_server = substr($db_url, strpos($db_url, "@"), strpos($db_url, "/h") - strpos($db_url, "@"));
     $db_username = substr($db_url, strpos($db_url, "//"), strpos($db_url, ":1") - strpos($db_url, "//") - 1);
     $db_server = substr($db_url, strpos($db_url, ":1") + 1, strpos($db_url, "@") - strpos($db_url, ":1") - 1);
     //TEMPORARY !!
-    echo $db_server . "\r\n";
-    echo $db_username . "\r\n";
-    echo $db_password . "\r\n";
+    echo $db_server . "<br>";
+    echo $db_username . "<br>";
+    echo $db_password . "<br>";
     $mysql = new mysqli($db_server, $db_username, $db_password, $db_username);
     $query = "SELECT * FROM twitch_follow";
     $r = $mysql->query($query);
