@@ -523,14 +523,11 @@ class Bot(discord.Client):
         db_url = "http://botwyniel.herokuapp.com/get_data.php"
         args = {'name': 'last update'}
         current_version = requests.get(db_url, params=args).text
-        print(current_version)
         patch_page = requests.get(league_url).text
         index = patch_page.index("lol-core-file-formatter")
-        print(patch_page[index:index+50])
-        print(patch_page.rfind("<", 0, index))
-        print(patch_page[index:].find(">"))
         field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
-        print(field)
+        print(field.index("title=") + 7)
+        print(field[field.index("title=") + 7:].index('"') + 7)
         latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + 7]
         print(latest_version)
 
