@@ -530,7 +530,7 @@ class Bot(discord.Client):
         
         current_version = requests.get(db_url, params=args).text
         
-        while true:
+        while True:
             patch_page = requests.get(league_url).text
             index = patch_page.index("lol-core-file-formatter")
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
