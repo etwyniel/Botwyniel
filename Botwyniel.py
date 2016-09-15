@@ -527,8 +527,8 @@ class Bot(discord.Client):
         index = patch_page.index("lol-core-file-formatter")
         field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
         print(field.index("title=") + 7)
-        print(field[field.index("title=") + 7:].index('"') + 7)
-        latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + 7]
+        print(field[field.index("title=") + 7:].index('"') + field.index("title=") + 7)
+        latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
         print(latest_version)
 
 if not discord.opus.is_loaded():
