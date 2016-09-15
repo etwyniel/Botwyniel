@@ -90,9 +90,9 @@ class Bot(discord.Client):
                               "0!suggest": "Make a suggestion to improve " + self.name
                               }
     async def on_ready(self):
-        #print('Logged in as ' + self.user.name)
+        print('Logged in as ' + self.user.name)
         
-        update_checker = Thread(target=check_update, daemon=True)
+        update_checker = Thread(target=self.check_update, daemon=True)
         update_checker.start()
         
         self.list_servers()
