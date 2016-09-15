@@ -90,7 +90,11 @@ class Bot(discord.Client):
                               "0!suggest": "Make a suggestion to improve " + self.name
                               }
     async def on_ready(self):
-        print('Logged in as ' + self.user.name)
+        #print('Logged in as ' + self.user.name)
+        
+        update_checker = Thread(target=check_update, daemon=True)
+        update_checker.start()
+        
         self.list_servers()
         await self.log("Botwyniel initialized")
         chans = self.servs["Etwyniel's"].channels
@@ -519,17 +523,23 @@ class Bot(discord.Client):
         await self.send_message(channel, to_send)
     
     def check_update(self):
+        # What a mess...
         league_url = "http://euw.leagueoflegends.com/en/news/game-updates/patch/"
         db_url = "http://botwyniel.herokuapp.com/get_data.php"
         args = {'name': 'last update'}
+        
         current_version = requests.get(db_url, params=args).text
-        patch_page = requests.get(league_url).text
-        index = patch_page.index("lol-core-file-formatter")
-        field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
-        print(field.index("title=") + 7)
-        print(field[field.index("title=") + 7:].index('"') + field.index("title=") + 7)
-        latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
-        print(latest_version)
+        
+        while true:
+            patch_page = requests.get(league_url).text
+            index = patch_page.index("lol-core-file-formatter")
+            field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
+            latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
+            
+            if current_version != latest_version:
+                pass
+            sleep(900)
+        
 
 if not discord.opus.is_loaded():
     pass
