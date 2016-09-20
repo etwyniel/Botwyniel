@@ -536,9 +536,11 @@ class Bot(discord.Client):
             index = patch_page.index("lol-core-file-formatter")
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
             latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
+            patch_url = "euw.leagueoflegends.com" + \
+                field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("herf=") + 6]
             
             if current_version != latest_version:
-                await self.send_message(discord.Object('124790445598310400'), "New League of Legends update!")
+                await self.send_message(discord.Object('124790445598310400'), "New League of Legends update!\n" + patch_url)
                 requests.post(db_update_url, {'key':'last update', 'value':latest_version})
                 #current_version = latest_version
             sleep(90)
