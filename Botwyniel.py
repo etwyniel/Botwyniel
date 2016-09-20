@@ -8,6 +8,7 @@ import subprocess
 import os
 from ctypes.util import find_library
 import requests
+import pymysql
 
 import discord
 from RiotAPI import RiotAPI
@@ -528,12 +529,24 @@ class Bot(discord.Client):
         db_update_url = "http://botwyniel.herokuapp.com/update_data.php"
         args = {'name': 'last update'}
         
-        #current_version = requests.get(db_url, params=args).text
+        db = os.environ['CLEARDB_DATABASE_URL'][8:]
+        db_server = db[db.index('@') + 1:db.index('/')]
+        db_username = db[:db.index(':')]
+        db_password = db[db.index(':') + 1:db.index('@')]
+        db_database = db[db.index('/') + 1:db.index('?')]
         
+        
+        
+        #current_version = requests.get(db_url, params=args).text
         while True:
             channel = discord.Object('124790445598310400')
             
-            current_version = requests.get(db_url, params=args).text
+            conn = pymysql.connect(host=db_server, user=db_username, password=db_password, db=db_database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM botwyniel_data WHERE name='last update'")
+            current_version = cursor.fetchone()[1]
+            #current_version = requests.get(db_url, params=args).text
+            
             patch_page = requests.get(league_url).text
             index = patch_page.index("lol-core-file-formatter")
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
@@ -543,8 +556,11 @@ class Bot(discord.Client):
             
             if current_version != latest_version:
                 await self.send_message(channel, "New League of Legends update!\n" + patch_url)
-                requests.post(db_update_url, {'key':'last update', 'value':latest_version})
-                #current_version = latest_version
+                cursor.execute("UPDATE botwyniel_data SET val={} WHERE name='last update'".format(latest_version))
+                conn.commit()
+                #requests.post(db_update_url, {'key':'last update', 'value':latest_version})
+                current_version = latest_version
+            conn.close()
             sleep(90)
         
 
