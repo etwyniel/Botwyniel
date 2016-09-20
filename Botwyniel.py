@@ -528,9 +528,10 @@ class Bot(discord.Client):
         db_update_url = "http://botwyniel.herokuapp.com/update_data.php"
         args = {'name': 'last update'}
         
-        current_version = requests.get(db_url, params=args).text
+        #current_version = requests.get(db_url, params=args).text
         
         while True:
+            current_version = requests.get(db_url, params=args).text
             patch_page = requests.get(league_url).text
             index = patch_page.index("lol-core-file-formatter")
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
@@ -539,7 +540,7 @@ class Bot(discord.Client):
             if current_version != latest_version:
                 await self.send_message(discord.Object('124790445598310400'), "New League of Legends update!")
                 requests.post(db_update_url, {'key':'last update', 'value':latest_version})
-                current_version = latest_version
+                #current_version = latest_version
             sleep(90)
         
 
