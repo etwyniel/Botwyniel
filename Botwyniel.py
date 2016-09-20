@@ -538,7 +538,7 @@ class Bot(discord.Client):
             index = patch_page.index("lol-core-file-formatter")
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
             latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
-            patch_url = "euw.leagueoflegends.com" + \
+            patch_url = "http://euw.leagueoflegends.com" + \
                 field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
             
             if current_version != latest_version:
