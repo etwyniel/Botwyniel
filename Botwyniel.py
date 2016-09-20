@@ -158,9 +158,9 @@ class Bot(discord.Client):
         await self.send_message(message.channel, 'Now playing `' + self.player.title + '`')
 
     def list_servers(self):
-        print("\nAvailable servers:")
+        print("\nLogged in to {} servers.".format(len(self.servers)))
         for a in self.servers:
-            print(a.name)
+            #print(a.name)
             self.servs[a.name] = a
             ch_dict = {}
             for channel in a.channels:
