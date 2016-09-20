@@ -525,6 +525,7 @@ class Bot(discord.Client):
         # What a mess...
         league_url = "http://euw.leagueoflegends.com/en/news/game-updates/patch/"
         db_url = "http://botwyniel.herokuapp.com/get_data.php"
+        db_update_url = "http://botwyniel.herokuapp.com/update_data.php"
         args = {'name': 'last update'}
         
         current_version = requests.get(db_url, params=args).text
@@ -537,7 +538,8 @@ class Bot(discord.Client):
             
             if current_version != latest_version:
                 await self.send_message(discord.Object('124790445598310400'), "New League of Legends update!")
-            sleep(900)
+                requests.post(db_update_url, {'key':'last update', 'value':latest_version})
+            sleep(90)
         
 
 if not discord.opus.is_loaded():
