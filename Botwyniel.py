@@ -539,6 +539,7 @@ class Bot(discord.Client):
             if current_version != latest_version:
                 await self.send_message(discord.Object('124790445598310400'), "New League of Legends update!")
                 requests.post(db_update_url, {'key':'last update', 'value':latest_version})
+                current_version = latest_version
             sleep(90)
         
 
