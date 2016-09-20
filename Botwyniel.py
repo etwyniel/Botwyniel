@@ -92,8 +92,7 @@ class Bot(discord.Client):
     async def on_ready(self):
         print('Logged in as ' + self.user.name)
         
-        update_checker = Thread(target=self.check_update, daemon=True)
-        update_checker.start()
+        self.loop.create_task(self.check_update())
         
         self.list_servers()
         await self.log("Botwyniel initialized")
@@ -522,7 +521,7 @@ class Bot(discord.Client):
             event=event)
         await self.send_message(channel, to_send)
     
-    def check_update(self):
+    async def check_update(self):
         # What a mess...
         league_url = "http://euw.leagueoflegends.com/en/news/game-updates/patch/"
         db_url = "http://botwyniel.herokuapp.com/get_data.php"
@@ -537,7 +536,7 @@ class Bot(discord.Client):
             latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
             
             if current_version != latest_version:
-                pass
+                await self.send_message(discord.Object('124790445598310400'), "New League of Legends update!")
             sleep(900)
         
 
