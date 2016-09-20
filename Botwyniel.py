@@ -93,7 +93,7 @@ class Bot(discord.Client):
     async def on_ready(self):
         print('Logged in as ' + self.user.name)
         
-        self.loop.create_task(self.check_update())
+        #self.loop.create_task(self.check_update())
         
         self.list_servers()
         await self.log("Botwyniel initialized")
