@@ -556,7 +556,7 @@ class Bot(discord.Client):
             
             if current_version != latest_version:
                 await self.send_message(channel, "New League of Legends update!\n" + patch_url)
-                cursor.execute("UPDATE botwyniel_data SET val={} WHERE name='last update'".format(latest_version))
+                cursor.execute("UPDATE botwyniel_data SET val='{}' WHERE name='last update'".format(latest_version))
                 conn.commit()
                 #requests.post(db_update_url, {'key':'last update', 'value':latest_version})
                 current_version = latest_version
