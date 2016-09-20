@@ -17,4 +17,4 @@
         die("Failed to update values: " . $mysql->error);
     }
     $mysql->close();
->
+?>
