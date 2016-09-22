@@ -561,7 +561,7 @@ class Bot(discord.Client):
                 #requests.post(db_update_url, {'key':'last update', 'value':latest_version})
                 current_version = latest_version
             conn.close()
-            sleep(90)
+            await asyncio.sleep(90)
         
 
 if not discord.opus.is_loaded():
