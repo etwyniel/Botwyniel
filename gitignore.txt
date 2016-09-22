@@ -1,2 +1,6 @@
 vendor/
 .env
+opus.dll
+*/__pycache__/*
+__pycache/*
+dump.txt

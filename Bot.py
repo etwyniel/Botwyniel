@@ -6,11 +6,15 @@ from random import randrange
 import asyncio
 import subprocess
 import os
+from ctypes.util import find_library
+import requests
+import pymysql
 
 import discord
 from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
+from simpleHTTPparser import get_text
 
 
 class VoiceEntry:
@@ -25,7 +29,7 @@ class Bot(discord.Client):
     Mostly designed for League of Legends.
     """
     
-    def __init__(self, username, password, name="Botwyniel", wl=[], **kwargs):
+    def __init__(self, name="Botwyniel", wl=[], **kwargs):
         super().__init__()
         self.player = None
         self.init_time = datetime.now()
@@ -36,11 +40,9 @@ class Bot(discord.Client):
         self.play_next_song = asyncio.Event()
         self.name = name
         self.whitelist = wl
-        self.username = username
-        self.password = password
         self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
         self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
-        self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "PBE"]
+        self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "JP", "PBE"]
         self.commands = {"0!rank": self.rank,
                          "0!gameranks": self.gameranks,
                          "0!uptime": self.send_uptime,
@@ -62,6 +64,7 @@ class Bot(discord.Client):
                          "0!suggest": self.suggest,
                          "0!play": self.play_song,
                          "0!pause": self.pause,
+                         "0!info": self.info,
                          "0!ytplay": None
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
@@ -90,12 +93,21 @@ class Bot(discord.Client):
                               }
     async def on_ready(self):
         print('Logged in as ' + self.user.name)
+        
+        self.loop.create_task(self.check_update())
+        
         self.list_servers()
         await self.log("Botwyniel initialized")
         chans = self.servs["Etwyniel's"].channels
-        for c in chans:
-            if str(c.type) != 'text':
-                await self.join_voice_channel(c)
+        if not discord.opus.is_loaded():
+            pass
+			#discord.opus.load_opus('vendor/lib/libopus.so.0')
+                #await self.log('Failed to load opus: ' str(e))
+        """
+		for c in chans:
+            if str(c.type) != 'text' and c.name == 'Music':
+                self.voice = await self.join_voice_channel(c)
+		"""
 
     async def on_message(self, message):
 ##        if message.content == '0!play':
@@ -132,7 +144,7 @@ class Bot(discord.Client):
             except (InvalidArgument, HTTPException):
                     self.send_message(message.channel, 'Failed to accept invite')
 
-    def pause(self, message):
+    async def pause(self, message):
         if self.player != None and self.player.is_playing():
             self.player.pause()
         else:
@@ -149,12 +161,8 @@ class Bot(discord.Client):
         self.player.start()
         await self.send_message(message.channel, 'Now playing `' + self.player.title + '`')
 
-    async def delete_file(self):
-        await self.send_message(self.current.channel, 'Finished playing')
-        os.remove(self.current.song)
-
     def list_servers(self):
-        print("\nAvailable servers:")
+        print("\nLogged in to {} servers.".format(len(self.servers)))
         for a in self.servers:
             #print(a.name)
             self.servs[a.name] = a
@@ -210,11 +218,11 @@ class Bot(discord.Client):
 
     async def avatar(self, message):
         if len(message.mentions) == 0:
-            await self.send_message(message.channel, message.author.avatar_url())
+            await self.send_message(message.channel, message.author.avatar_url)
         else:
             try:
                 for user in message.mentions:
-                    await self.send_message(message.channel, user.avatar_url())
+                    await self.send_message(message.channel, user.avatar_url)
             except discord.errors.HTTPException:
                 await self.send_message(message.channel, "This user does not have an avatar.")
 
@@ -456,22 +464,29 @@ class Bot(discord.Client):
                    "As I see it, yes."]
         to_send = outputs[randrange(len(outputs))]
         await self.send_message(message.channel, to_send)
-        self.log("Answer: " + to_send)
+        await self.log("Answer: " + to_send)
 
     async def execute(self, message):
         if not self.author_is_admin(message):
             await self.send_message(message.channel, "This is an admin-only command.")
             return None
         try:
-            exec(self.truncate(message.content))
+            c = self.truncate(message.content)
+            if c.startswith('await'):
+                await eval(c.split('await ')[1])
+            else:
+                exec(c)
         except Exception as e:
-            self.log(str(e))
+            await self.log(str(e))
             await self.send_message(message.channel, "Error occured: " + str(e))
             
     async def suggest(self, message):
         suggestion = self.truncate(message.content)
-        await self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.name + ': ' + suggestion)
-        await self.send_message(message.channel, "Thanks for the suggestion!")
+        if suggestion != "":
+            await self.send_message(self.channels[self.servs['Etwyniel\'s']]['suggestions'], message.author.id + ': ' + suggestion)
+            await self.send_message(message.channel, "Thanks for the suggestion!")
+        else:
+            await self.send_message(message.channel, "Please enter a suggestion.")
 
     async def info(self, message):
         await self.send_message(message.channel, "Python bot made by Etwyniel, using discord.py")
@@ -510,6 +525,56 @@ class Bot(discord.Client):
             time="".join(str(datetime.now().time()).split(".")[0])[0:5],
             event=event)
         await self.send_message(channel, to_send)
+    
+    async def check_update(self):
+        # What a mess...
+        league_url = "http://euw.leagueoflegends.com/en/news/game-updates/patch/"
+        db_url = "http://botwyniel.herokuapp.com/get_data.php"
+        db_update_url = "http://botwyniel.herokuapp.com/update_data.php"
+        args = {'name': 'last update'}
+        
+        db = input("Database url: ")[8:]
+        db_server = db[db.index('@') + 1:db.index('/')]
+        db_username = db[:db.index(':')]
+        db_password = db[db.index(':') + 1:db.index('@')]
+        db_database = db[db.index('/') + 1:db.index('?')]
+        
+        
+        
+        #current_version = requests.get(db_url, params=args).text
+        while True:
+            channel = discord.Object('124790445598310400')
+            
+            conn = pymysql.connect(host=db_server, user=db_username, password=db_password, db=db_database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM botwyniel_data WHERE name='last update'")
+            current_version = cursor.fetchone()[1]
+            #current_version = requests.get(db_url, params=args).text
+            
+            patch_page = requests.get(league_url).text
+            index = patch_page.index("lol-core-file-formatter")
+            field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
+            latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
+            
+            if current_version != latest_version:
+				patch_url = "http://euw.leagueoflegends.com" + \
+					field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
+                await self.send_message(channel, "New League of Legends update!\n" + patch_url)
+                cursor.execute("UPDATE botwyniel_data SET val='{}' WHERE name='last update'".format(latest_version))
+                conn.commit()
+                current_version = latest_version
+				patch_page = requests.get(patch_url).text
+				patch_text = get_text(patch_page)
+				patch_page = patch_page.replace('\u21d2', '>')
+				patch_page = patch_page.replace('\t', '')
+				patch_page = patch_page.replace('  ', ' ')
+            conn.close()
+            await asyncio.sleep(90)
+        
 
-botwyniel = Bot(input("Email: "), input("Password: "), wl=["Etwyniel", "Jhysodif"])
-botwyniel.run(botwyniel.username, botwyniel.password)
+if not discord.opus.is_loaded():
+    pass
+    #discord.opus.load_opus('libopus/build/lib/libopus.so.0.5.0')
+
+botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
+botwyniel.run(input("Token: "))

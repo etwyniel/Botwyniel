@@ -171,7 +171,7 @@ class DiscordWebSocket(websockets.client.WebSocketClientProtocol):
     INVALIDATE_SESSION = 9
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, max_size=None, **kwargs)
+        super().__init__(*args, **kwargs) #max_size=None, **kwargs)
         # an empty dispatcher to prevent crashes
         self._dispatch = lambda *args: None
         # generic event listeners
