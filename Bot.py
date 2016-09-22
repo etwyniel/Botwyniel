@@ -51,7 +51,6 @@ class Bot(discord.Client):
                          "0!fc": self.free_champs,
                          "0!py": self.execute,
                          "0!help": self.help,
-                         "0!join": self.join_server,
                          "0!ytlatest": self.latest_videos,
                          "0!ytsearch": self.search_video,
                          "0!ytthumbnail": self.get_thumbnail,
@@ -80,7 +79,6 @@ class Bot(discord.Client):
                               "0!fc": "Returns this week's free champions.",
                               "0!py": "Executes a python command or block of code. Admin-only.",
                               "0!help": "...really?",
-                              "0!join": "Makes the bot accept an instant invite (http://discord.gg/xxxxxxxx).",
                               "0!ytsearch": "Sends the URL of the first corresponding youtube video.",
                               "0!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
                               "0!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
@@ -255,17 +253,6 @@ class Bot(discord.Client):
         elif message.author.name in self.whitelist:
             return True
         else: return False
-
-    async def join_server(self, message):
-        url = self.truncate(message.content)
-        a = self.accept_invite(url)
-        try:
-            if a == None:
-                await self.send_message(message.channel, 'Server joined!')
-            else:
-                await self.send_message(message.channel, 'Failed to join server')
-        except:
-            await self.send_message(message.channel, 'Failed to join server')
 
     async def rank(self, message):
         await self.send_typing(message.channel)
