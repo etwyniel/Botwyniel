@@ -14,7 +14,7 @@ import discord
 from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
-from simpleHTTPparser import get_text
+from simpleHTMLparser import get_text
 
 
 class VoiceEntry:
@@ -544,17 +544,17 @@ class Bot(discord.Client):
             latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
             
             if current_version != latest_version:
-				patch_url = "http://euw.leagueoflegends.com" + \
-					field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
+                patch_url = "http://euw.leagueoflegends.com" + \
+                    field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
                 await self.send_message(channel, "New League of Legends update!\n" + patch_url)
                 cursor.execute("UPDATE botwyniel_data SET val='{}' WHERE name='last update'".format(latest_version))
                 conn.commit()
                 current_version = latest_version
-				patch_page = requests.get(patch_url).text
-				patch_text = get_text(patch_page)
-				patch_page = patch_page.replace('\u21d2', '>')
-				patch_page = patch_page.replace('\t', '')
-				patch_page = patch_page.replace('  ', ' ')
+                patch_page = requests.get(patch_url).text
+                patch_text = get_text(patch_page)
+                patch_page = patch_page.replace('\u21d2', '>')
+                patch_page = patch_page.replace('\t', '')
+                patch_page = patch_page.replace('  ', ' ')
             conn.close()
             await asyncio.sleep(90)
         
