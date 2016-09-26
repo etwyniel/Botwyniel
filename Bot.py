@@ -9,6 +9,7 @@ import os
 from ctypes.util import find_library
 import requests
 import pymysql
+from bs4 import BeautifulSoup as BS
 
 import discord
 from RiotAPI import RiotAPI
@@ -541,11 +542,14 @@ class Bot(discord.Client):
             patch_page = requests.get(league_url).text
             index = patch_page.index("lol-core-file-formatter")
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
-            latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
+            #latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
+            patch_url = "http://euw.leagueoflegends.com" + \
+                field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
+            page = BS(requests.get(patch_url).text)
+            latest_version = page.title.text
             
             if current_version != latest_version:
-                patch_url = "http://euw.leagueoflegends.com" + \
-                    field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
+                
                 await self.send_message(channel, "New League of Legends update!\n" + patch_url)
                 cursor.execute("UPDATE botwyniel_data SET val='{}' WHERE name='last update'".format(latest_version))
                 conn.commit()
