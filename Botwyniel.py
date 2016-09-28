@@ -592,7 +592,7 @@ class Bot(discord.Client):
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
             latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
             
-	if current_version != latest_version:
+            if current_version != latest_version:
                 patch_url = "http://euw.leagueoflegends.com" + \
                     field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
                 await self.send_message(channel, "New League of Legends update!\n" + patch_url)
