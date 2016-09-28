@@ -519,7 +519,7 @@ class Bot(discord.Client):
             "I am currently used by {} servers.").format(str(len(self.servers))))
 
     async def log(self, event):
-        channel = self.channels[self.servs["112837042148302848"]]["126989016334598145"]
+        channel = self.channels[self.servs["Etwyniel's"]]["logs"]
         to_send = "[{date}] - *{time}*\n{event}".format(
             date=str(date.today()),
             time="".join(str(datetime.now().time()).split(".")[0])[0:5],
