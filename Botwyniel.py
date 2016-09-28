@@ -13,7 +13,6 @@ import discord
 from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
-from simpleHTMLparser import get_text
 
 
 class VoiceEntry:
