@@ -3,4 +3,4 @@ ws4py==0.3.4
 youtube-dl==2016.03.27
 cffi==1.6.0
 pymysql
-git+https://github.com/Rapptz/discord.py@async
+git+https://github.com/Rapptz/discord.py
