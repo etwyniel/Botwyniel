@@ -531,7 +531,7 @@ class Bot(discord.Client):
         else:
             alias = m
             region = 'euw'
-        if len(alias > 32):
+        if len(alias) > 32:
             self.send_message(message.channel, "This alias is too long.")
         elif alias == "":
             self.send_message(message.channel, "Please enter your alias.")
