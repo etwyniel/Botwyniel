@@ -580,7 +580,7 @@ class Bot(discord.Client):
         
         #current_version = requests.get(db_url, params=args).text
         while True:
-            channel = discord.Object('124790445598310400')
+            channel = discord.Object('211180551502168064')
             
             conn = self.db_connect()
             cursor = conn.cursor()
