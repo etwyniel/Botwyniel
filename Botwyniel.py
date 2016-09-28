@@ -541,9 +541,9 @@ class Bot(discord.Client):
         conn = self.db_connect()
         cursor = conn.cursor()
         if id in self.aliases:
-            query = "UPDATE aliases SET username = '{1}', region = '{2}' WHERE id = '{0}';"
+            query = "UPDATE aliases SET alias = '{1}', region = '{2}' WHERE id = '{0}';"
         else:
-            query = "INSERT INTO aliases (id, username, region) VALUES ('{0}', '{1}', '{2}');"
+            query = "INSERT INTO aliases (id, alias, region) VALUES ('{0}', '{1}', '{2}');"
         cursor.execute(query.format(id, alias, region))
         conn.close()
         self.aliases[id] = [alias, region]
@@ -553,7 +553,7 @@ class Bot(discord.Client):
         conn = self.db_connect()
         cursor = conn.cursor()
         id = message.author.id
-        cursor.execute("SELECT username FROM aliases WHERE id = '{}'".format(id))
+        cursor.execute("SELECT alias FROM aliases WHERE id = '{}'".format(id))
         alias = cursor.fetchone()[0]
         query = "DELETE * FROM aliases WHERE id = '{}'"
         cursor.execute(query.format(id))
