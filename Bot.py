@@ -72,11 +72,11 @@ class Bot(discord.Client):
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
-                                  "Syntax: `0!rank username *(, region)*`    -- region is optional if the player you are looking is on EUW",
+                                  "Syntax: `0!rank username (, region)`    -- region is optional if the player you are looking is on EUW",
                               "0!gameranks": "Returns the ranks of the players in the game the specified player is "
                                   "currently in. If your Discord username is the same as your summoner "
                                   "name, or if you have set an alias using 0!setalias, you can use !gameranks me, *region* or 0!gameranks instead.\n"
-                                  "Syntax: `0!gameranks username *(, region)`     -- region if the player you are looking for is on EUW",
+                                  "Syntax: `0!gameranks username (, region)`     -- region if the player you are looking for is on EUW",
                               "0!uptime": "Returns the duration for which the bot has been running.",
                               "0!status": "Changes the game the bot is playing to the specified game.",
                               "0!send": "Makes the bot send a message to the specified channel. The bot needs to be "
@@ -89,14 +89,14 @@ class Bot(discord.Client):
                               "0!ytlatest": "Sends the URL of the last 3 videos of the specified youtube channel.",
                               "0!ytthumbnail": "Sends the thumbnail of the first corresponding youtube video.",
                               "0!avatar": "Sends the URL of the mentionned user's avatar.\n"
-                                  "Syntax: `0!avatar @*username*`",
+                                  "Syntax: `0!avatar @username`",
                               "0!sendpm": "Sends a private message to the mentionned user.",
                               "0!8ball": "Ask me a question!",
                               "0!coin": "Flip a coin!",
                               "0!dice": "Roll n dices with x faces.\n The command should look like this: **ndx**",
                               "0!suggest": "Make a suggestion to improve " + self.name,
                               "0!setalias": "Tell Botwyniel to remember your LoL username and region, so you can call 0!rank and 0!gameranks without arguments.\n"
-                                  "Syntax: `0!setalias *username*, *region*`",
+                                  "Syntax: `0!setalias username, region`",
                               "0!removealias": "Tell Botwyniel to forget your alias.\n"
                                   "Syntax: `0!removealias`"
                               }
