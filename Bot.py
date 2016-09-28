@@ -468,6 +468,7 @@ class Bot(discord.Client):
                         await eval(c.split('await ')[1])
                     else:
                         exec(c)
+                    command = ""
                 else:
                     command += char
         except Exception as e:
