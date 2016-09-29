@@ -532,7 +532,7 @@ class Bot(discord.Client):
         id = message.author.id
         m = self.truncate(message.content)
         if ',' in m:
-            alias, region = m.split(',')
+            alias, region = m.split(', ')
         else:
             alias = m
             region = 'euw'
