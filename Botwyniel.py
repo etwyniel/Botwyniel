@@ -554,7 +554,7 @@ class Bot(discord.Client):
         self.aliases[id] = [alias, region]
         await self.send_message(message.channel, "Alias {} successfully set!".format(alias))
         
-    async def remove_alias(self):
+    async def remove_alias(self, message):
         conn = self.db_connect()
         cursor = conn.cursor()
         id = message.author.id
