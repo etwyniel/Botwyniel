@@ -465,7 +465,7 @@ class Bot(discord.Client):
                     if command.startswith('await'):
                         await eval(command.split('await ')[1])
                     else:
-                        exec(c)
+                        exec(command)
                     command = ""
                 else:
                     command += char
