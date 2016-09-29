@@ -469,6 +469,10 @@ class Bot(discord.Client):
                     command = ""
                 else:
                     command += char
+            if command.startswith('await'):
+                await eval(command.split('await ')[1])
+            else:
+                exec(command)
         except Exception as e:
             await self.log(str(e))
             await self.send_message(message.channel, "Error occured: " + str(e))
