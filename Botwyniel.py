@@ -256,13 +256,14 @@ class Bot(discord.Client):
         if region.upper() not in self.regions:
             await self.send_message(message.channel, 'Invalid region')
             return None
-        riot = RiotAPI(self.riot_key, region)
+        
         if username in ["me", '']:
             if message.author.id in self.aliases:
                 username, region = self.aliases[message.author.id]
             else:
                 username = message.author.name
         try:
+            riot = RiotAPI(self.riot_key, region)
             rank = riot.get_summoner_rank("".join(username.split(" ")))
 
             to_return = "The summoner {username} is ranked {tier} {division} and currently has {LP} LPs. (S6 winrate: {winrate}%)".format(
