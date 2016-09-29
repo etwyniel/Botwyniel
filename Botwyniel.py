@@ -561,7 +561,7 @@ class Bot(discord.Client):
         id = message.author.id
         cursor.execute("SELECT alias FROM aliases WHERE id = '{}'".format(id))
         alias = cursor.fetchone()[0]
-        query = "DELETE * FROM aliases WHERE id = '{}'"
+        query = "DELETE FROM aliases WHERE id = '{}'"
         cursor.execute(query.format(id))
         conn.commit()
         conn.close()
@@ -606,7 +606,7 @@ class Bot(discord.Client):
                 conn.commit()
                 current_version = latest_version
             conn.close()
-            await asyncio.sleep(90)
+            await asyncio.sleep(900)
         
 
 if not discord.opus.is_loaded():
