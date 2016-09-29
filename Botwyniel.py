@@ -462,7 +462,7 @@ class Bot(discord.Client):
             for char in self.truncate(message.content):
                 if char == '\n':
                     if command.startswith('await'):
-                        await eval(c.split('await ')[1])
+                        await eval(command.split('await ')[1])
                     else:
                         exec(c)
                     command = ""
