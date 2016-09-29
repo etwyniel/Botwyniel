@@ -550,6 +550,7 @@ class Bot(discord.Client):
         else:
             query = "INSERT INTO aliases (id, alias, region) VALUES ('{0}', '{1}', '{2}');"
         cursor.execute(query.format(id, alias, region))
+	conn.commit()
         conn.close()
         self.aliases[id] = [alias, region]
         await self.send_message(message.channel, "Alias {} successfully set!".format(alias))
@@ -562,6 +563,7 @@ class Bot(discord.Client):
         alias = cursor.fetchone()[0]
         query = "DELETE * FROM aliases WHERE id = '{}'"
         cursor.execute(query.format(id))
+	conn.commit()
         conn.close()
         self.aliases.pop(id)
         await self.send_message(message.channel, "Alias {} successfully removed!".format(alias))
