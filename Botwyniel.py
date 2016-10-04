@@ -520,7 +520,7 @@ class Bot(discord.Client):
             await self.send_message(message.author, "Unknown command.")
             
     async def about(self, message):
-        self.send_message(message.channel, ("I am a discord bot created by Etwyniel, using discord.py by Rapptz.\n"
+        await self.send_message(message.channel, ("I am a discord bot created by Etwyniel, using discord.py by Rapptz.\n"
             "I can find your League of Legends rank, or the ranks of the people you are playing with and against.\n"
             "I can also find videos on YouTube.\n\n"
             "I am currently used by {} servers.").format(str(len(self.servers))))
