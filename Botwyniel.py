@@ -399,7 +399,7 @@ class Bot(discord.Client):
     async def sendpm(self, message):
         m = self.truncate(message.content)
         receiver = message.mentions[0]
-        if not message.channel.is_private and receiver.nick != None
+        if not message.channel.is_private and receiver.nick != None:
             m = m.replace("@" + receiver.nick + " ", "")
         else:
             m = m.replace("@" + receiver.name + " ", "")
