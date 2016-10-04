@@ -398,7 +398,12 @@ class Bot(discord.Client):
 
     async def sendpm(self, message):
         m = self.truncate(message.content)
-        await self.send_message(message.mentions[0], m)
+	receiver = message.mentions[0]
+        if not message.channel.is_private and receiver.nick != None
+            m = m.replace("@" + receiver.nick + " ", "")
+        else:
+            m = m.replace("@" + receiver.name + " ", "")
+        await self.send_message(receiver, m)
 
     def kill(self, message):
         if self.author_is_admin(message):
@@ -498,7 +503,7 @@ class Bot(discord.Client):
             "**0!ytthumbnail** *query*\n"
             "**0!uptime**\n"
             "**0!send** *server*, *channel*, message\n"
-            "**0!sendpm** @*user*\n"
+            "**0!sendpm** @*user* *message*\n"
             "**0!fc**\n"
             "**0!love**\n"
             "**0!8ball** *question*\n"
