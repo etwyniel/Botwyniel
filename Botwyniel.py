@@ -171,7 +171,7 @@ class Bot(discord.Client):
     async def join_voice(self, message):
         channel = self.truncate(message.content).lower()
         for c in list(message.server.channels):
-            if c.name.lower == channel and str(c.type) == "voice":
+            if c.name.lower() == channel and str(c.type) == "voice":
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
                 return
