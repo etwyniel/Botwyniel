@@ -114,8 +114,8 @@ class Bot(discord.Client):
                 await self.log('Failed to load opus: ' + str(e))
         for c in chans:
             if str(c.type) != 'text' and c.name == 'Music':
-                self.voice += await self.join_voice_channel(c)
-                voice[-1].player = None
+                self.voice.append(await self.join_voice_channel(c))
+                self.voice[-1].player = None
 
     async def on_message(self, message):
         """if message.content == '0!play':
@@ -161,7 +161,7 @@ class Bot(discord.Client):
         await self.send_message(message.channel, 'No voice client on this server (use 0!joinvoice).')
 	
     async def join_voice(self, message):
-        channel = message.content.truncate().lower()
+        channel = self.truncate(message.content).lower()
         for c in message.server.channel:
             if c.name.lower == channel and c.type == "voice":
                 self.voice += await self.join_voice_channel(c)
