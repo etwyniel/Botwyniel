@@ -29,7 +29,7 @@ class Bot(discord.Client):
     
     def __init__(self, name="Botwyniel", wl=[], **kwargs):
         super().__init__()
-	self.voice = []
+        self.voice = []
         self.player = None
         self.init_time = datetime.now()
         self.servs = {}
