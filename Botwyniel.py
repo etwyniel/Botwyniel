@@ -139,11 +139,10 @@ class Bot(discord.Client):
                 await self.commands[message.content.split(" ")[0]](message)
 
     async def pause(self, message):
-        if self.player != None and self.player.is_playing():
-            self.player.pause()
-        else:
-            pass
-
+        for voice in self.voice:
+            if voice.server.id == message.server.id && voice.player != None and voice.player.is_playing():
+                voice.player.pause()
+    
     async def play_song(self, message):
         for voice in self.voice:
             if voice.server.id == message.server.id:
