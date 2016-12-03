@@ -67,7 +67,8 @@ class Bot(discord.Client):
                          "0!setalias": self.set_alias,
                          "0!removealias": self.remove_alias,
                          "0!about": self.about,
-                         "0!joinvoice": self.join_voice
+                         "0!joinvoice": self.join_voice, 
+                         "0!resume": self.resume
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -142,6 +143,14 @@ class Bot(discord.Client):
         for voice in self.voice:
             if voice.server.id == message.server.id && voice.player != None and voice.player.is_playing():
                 voice.player.pause()
+                
+    async def resume(self, message):
+        for voice in self.voice:
+            if voice.server.id == message.server.id && voice.player != None and not voice.player.is_playing():
+                try:
+                    voice.player.resume()
+                except:
+                    self.send_message(message.channel, 'No song paused.')
     
     async def play_song(self, message):
         for voice in self.voice:
