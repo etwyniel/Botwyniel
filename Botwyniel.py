@@ -115,7 +115,7 @@ class Bot(discord.Client):
                 self.voice = await self.join_voice_channel(c)
 
     async def on_message(self, message):
-        if message.content == '0!play':
+        """if message.content == '0!play':
             url = 'https://www.youtube.com/watch?v=B1O0R0t6zdI'
             subprocess.call('youtube-dl --metadata-from-title "%(artist)s - %(title)s"\
 --extract-audio --audio-format mp3 --add-metadata ' + url)
@@ -127,7 +127,7 @@ class Bot(discord.Client):
             await self.songs.put(VoiceEntry(message, filename))
             self.current = await self.songs.get()
             self.player = self.voice.create_ffmpeg_player(self.current.song, after=self.delete_file)
-            self.player.start()
+            self.player.start()"""
         if message.content.startswith('0!play'):
             await self.play_song(message)
         elif message.content.startswith('0!'):
