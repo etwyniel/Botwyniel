@@ -68,7 +68,8 @@ class Bot(discord.Client):
                          "0!removealias": self.remove_alias,
                          "0!about": self.about,
                          "0!joinvoice": self.join_voice, 
-                         "0!resume": self.resume
+                         "0!resume": self.resume,
+                         "0!leavevoice": self.leave_voice
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -172,10 +173,17 @@ class Bot(discord.Client):
         channel = self.truncate(message.content).lower()
         for c in list(message.server.channels):
             if c.name.lower() == channel and str(c.type) == "voice":
+                await self.leave_voice(message)
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
                 return
         await self.send_message(message.channel, 'Channel not found.')
+        
+    async def leave_voice(self, message):
+        for v in self.voice:
+            if v.server.id == message.id:
+                self.voice.remove(v)
+                v.disconnect()
 
     def list_servers(self):
         print("\nLogged in to {} servers.".format(len(self.servers)))
