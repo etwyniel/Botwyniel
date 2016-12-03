@@ -305,7 +305,7 @@ class VoiceClient:
             A stream player with specific operations.
             See :meth:`create_stream_player`.
         """
-        command = 'ffmpeg' if not use_avconv else 'avconv'
+        command = '/app/.heroku/vendor/bin/ffmpeg' if not use_avconv else 'avconv'
         input_name = '-' if pipe else shlex.quote(filename)
         before_args = ""
         if isinstance(headers, dict):
