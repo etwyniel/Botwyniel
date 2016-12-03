@@ -29,6 +29,7 @@ class Bot(discord.Client):
     
     def __init__(self, name="Botwyniel", wl=[], **kwargs):
         super().__init__()
+	self.voice = []
         self.player = None
         self.init_time = datetime.now()
         self.servs = {}
@@ -65,7 +66,8 @@ class Bot(discord.Client):
                          "0!ytplay": None,
                          "0!setalias": self.set_alias,
                          "0!removealias": self.remove_alias,
-                         "0!about": self.about
+                         "0!about": self.about,
+                         "0!joinvoice": self.join_voice
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -112,7 +114,8 @@ class Bot(discord.Client):
                 await self.log('Failed to load opus: ' + str(e))
         for c in chans:
             if str(c.type) != 'text' and c.name == 'Music':
-                self.voice = await self.join_voice_channel(c)
+                self.voice += await self.join_voice_channel(c)
+                voice[-1].player = None
 
     async def on_message(self, message):
         """if message.content == '0!play':
@@ -142,15 +145,29 @@ class Bot(discord.Client):
             pass
 
     async def play_song(self, message):
-        if self.player != None and self.player.is_playing():
-            await self.send_message(message.channel, 'Already playing.')
-            return None
-        await self.send_typing(message.channel)
-        query = message.content[message.content.find(' ')+1:]
-        url = self.yt.search_video(query)
-        self.player = await self.voice.create_ytdl_player(url)
-        self.player.start()
-        await self.send_message(message.channel, 'Now playing `' + self.player.title + '`')
+        for voice in self.voice:
+            if voice.server.id == message.server.id:
+                if voice.player != None and voice.player.is_playing():
+                    await self.send_message(message.channel, 'Already playing.')
+                    return None
+                await self.send_typing(message.channel)
+                query = message.content[message.content.find(' ')+1:]
+                url = self.yt.search_video(query)
+
+                voice.player = await voice.create_ytdl_player(url)
+                voice.player.start()
+                await self.send_message(message.channel, 'Now playing `' + voice.player.title + '`')
+                return
+        await self.send_message(message.channel, 'No voice client on this server (use 0!joinvoice).')
+	
+    async def join_voice(self, message):
+        channel = message.content.truncate().lower()
+        for c in message.server.channel:
+            if c.name.lower == channel and c.type = "voice":
+                self.voice += self.join_voice_channel(c)
+                self.voice[-1].player = None
+                return
+        await self.send_message(message.channel, 'Channel not found.')
 
     def list_servers(self):
         print("\nLogged in to {} servers.".format(len(self.servers)))
