@@ -141,12 +141,12 @@ class Bot(discord.Client):
 
     async def pause(self, message):
         for voice in self.voice:
-            if voice.server.id == message.server.id && voice.player != None and voice.player.is_playing():
+            if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
                 voice.player.pause()
                 
     async def resume(self, message):
         for voice in self.voice:
-            if voice.server.id == message.server.id && voice.player != None and not voice.player.is_playing():
+            if voice.server.id == message.server.id and voice.player != None and not voice.player.is_playing():
                 try:
                     voice.player.resume()
                 except:
