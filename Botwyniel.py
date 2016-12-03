@@ -107,7 +107,7 @@ class Bot(discord.Client):
         chans = self.servs["Etwyniel's"].channels
         if not discord.opus.is_loaded():
             discord.opus.load_opus('vendor/lib/libopus.so.0')
-            await self.log('Failed to load opus: ' str(e))
+            await self.log('Failed to load opus: ' + str(e))
         for c in chans:
             if str(c.type) != 'text' and c.name == 'Music':
                 self.voice = await self.join_voice_channel(c)
