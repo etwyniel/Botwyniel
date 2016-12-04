@@ -26,16 +26,18 @@ DEALINGS IN THE SOFTWARE.
 
 import asyncio
 import inspect
-import re
 import discord
 import functools
 
 from .errors import *
+from .cooldowns import Cooldown, BucketType, CooldownMapping
 from .view import quoted_word
+from . import converter as converters
 
 __all__ = [ 'Command', 'Group', 'GroupMixin', 'command', 'group',
             'has_role', 'has_permissions', 'has_any_role', 'check',
-            'bot_has_role', 'bot_has_permissions', 'bot_has_any_role' ]
+            'bot_has_role', 'bot_has_permissions', 'bot_has_any_role',
+            'cooldown' ]
 
 def inject_context(ctx, coro):
     @functools.wraps(coro)
@@ -44,7 +46,10 @@ def inject_context(ctx, coro):
         _internal_channel = ctx.message.channel
         _internal_author = ctx.message.author
 
-        ret = yield from coro(*args, **kwargs)
+        try:
+            ret = yield from coro(*args, **kwargs)
+        except Exception as e:
+            raise CommandInvokeError(e) from e
         return ret
     return wrapped
 
@@ -97,10 +102,10 @@ class Command:
     description : str
         The message prefixed into the default help command.
     hidden : bool
-        If ``True``, the default help command does not show this in the
+        If ``True``\, the default help command does not show this in the
         help output.
     no_pm : bool
-        If ``True``, then the command is not allowed to be executed in
+        If ``True``\, then the command is not allowed to be executed in
         private messages. Defaults to ``False``. Note that if it is executed
         in private messages, then :func:`on_command_error` and local error handlers
         are called with the :exc:`NoPrivateMessage` error.
@@ -111,6 +116,11 @@ class Command:
         regular matter rather than passing the rest completely raw. If ``True``
         then the keyword-only argument will pass in the rest of the arguments
         in a completely raw matter. Defaults to ``False``.
+    ignore_extra : bool
+        If ``True``\, ignores extraneous strings passed to a command if all its
+        requirements are met (e.g. ``?foo a b c`` when only expecting ``a``
+        and ``b``). Otherwise :func:`on_command_error` and local error handlers
+        are called with :exc:`TooManyArguments`. Defaults to ``True``.
     """
     def __init__(self, name, callback, **kwargs):
         self.name = name
@@ -131,121 +141,42 @@ class Command:
         self.checks = kwargs.get('checks', [])
         self.module = inspect.getmodule(callback)
         self.no_pm = kwargs.get('no_pm', False)
+        self.ignore_extra = kwargs.get('ignore_extra', True)
         self.instance = None
         self.parent = None
+        self._buckets = CooldownMapping(kwargs.get('cooldown'))
 
-    def handle_local_error(self, error, ctx):
+    def dispatch_error(self, error, ctx):
         try:
             coro = self.on_error
         except AttributeError:
-            return
-
-        injected = inject_context(ctx, coro)
-        if self.instance is not None:
-            discord.compat.create_task(injected(self.instance, error, ctx), loop=ctx.bot.loop)
+            pass
         else:
-            discord.compat.create_task(injected(error, ctx), loop=ctx.bot.loop)
-
-    def _get_from_servers(self, bot, getter, argument):
-        result = None
-        for server in bot.servers:
-            result = getattr(server, getter)(argument)
-            if result:
-                return result
-        return result
-
-    def _convert_member(self, bot, message, argument):
-        match = re.match(r'<@!?([0-9]+)>$', argument)
-        server = message.server
-        result = None
-        if match is None:
-            # not a mention...
-            if server:
-                result = server.get_member_named(argument)
+            loop = ctx.bot.loop
+            injected = inject_context(ctx, coro)
+            if self.instance is not None:
+                discord.compat.create_task(injected(self.instance, error, ctx), loop=loop)
             else:
-                result = self._get_from_servers(bot, 'get_member_named', argument)
-        else:
-            user_id = match.group(1)
-            if server:
-                result = server.get_member(user_id)
-            else:
-                result = self._get_from_servers(bot, 'get_member', user_id)
-
-        if result is None:
-            raise BadArgument('Member "{}" not found'.format(argument))
-
-        return result
-
-    _convert_user = _convert_member
-
-    def _convert_channel(self, bot, message, argument):
-        match = re.match(r'<#([0-9]+)>$', argument)
-        result = None
-        server = message.server
-        if match is None:
-            # not a mention
-            if server:
-                result = discord.utils.get(server.channels, name=argument)
-            else:
-                result = discord.utils.get(bot.get_all_channels(), name=argument)
-        else:
-            channel_id = match.group(1)
-            if server:
-                result = server.get_channel(channel_id)
-            else:
-                result = self._get_from_servers(bot, 'get_channel', channel_id)
-
-        if result is None:
-            raise BadArgument('Channel "{}" not found.'.format(argument))
-
-        return result
-
-    def _convert_colour(self, bot, message, argument):
-        arg = argument.replace('0x', '').lower()
-        if arg[0] == '#':
-            arg = arg[1:]
-        try:
-            value = int(arg, base=16)
-            return discord.Colour(value=value)
-        except ValueError:
-            method = getattr(discord.Colour, arg, None)
-            if method is None or not inspect.ismethod(method):
-                raise BadArgument('Colour "{}" is invalid.'.format(arg))
-            return method()
-
-    def _convert_role(self, bot, message, argument):
-        server = message.server
-        if not server:
-            raise NoPrivateMessage()
-
-        match = re.match(r'<@&([0-9]+)>$', argument)
-        params = dict(id=match.group(1)) if match else dict(name=argument)
-        result = discord.utils.get(server.roles, **params)
-        if result is None:
-            raise BadArgument('Role "{}" not found.'.format(argument))
-        return result
-
-    def _convert_game(self, bot, message, argument):
-        return discord.Game(name=argument)
+                discord.compat.create_task(injected(error, ctx), loop=loop)
+        finally:
+            ctx.bot.dispatch('command_error', error, ctx)
 
     @asyncio.coroutine
-    def do_conversion(self, bot, message, converter, argument):
+    def do_conversion(self, ctx, converter, argument):
         if converter is bool:
             return _convert_to_bool(argument)
 
-        if converter.__module__.split('.')[0] != 'discord':
-            return converter(argument)
+        if converter.__module__.startswith('discord.'):
+            converter = getattr(converters, converter.__name__ + 'Converter')
 
-        # special handling for discord.py related classes
-        if converter is discord.Invite:
-            try:
-                invite = yield from bot.get_invite(argument)
-                return invite
-            except Exception as e:
-                raise BadArgument('Invite is invalid or expired') from e
+        if inspect.isclass(converter) and issubclass(converter, converters.Converter):
+            instance = converter(ctx, argument)
+            if asyncio.iscoroutinefunction(instance.convert):
+                return (yield from instance.convert())
+            else:
+                return instance.convert()
 
-        new_converter = getattr(self, '_convert_{}'.format(converter.__name__.lower()))
-        return new_converter(bot, message, argument)
+        return converter(argument)
 
     def _get_converter(self, param):
         converter = param.annotation
@@ -280,7 +211,7 @@ class Command:
             argument = quoted_word(view)
 
         try:
-            return (yield from self.do_conversion(ctx.bot, ctx.message, converter, argument))
+            return (yield from self.do_conversion(ctx, converter, argument))
         except CommandError as e:
             raise e
         except Exception as e:
@@ -303,85 +234,137 @@ class Command:
 
         return result
 
+    @property
+    def full_parent_name(self):
+        """Retrieves the fully qualified parent command name.
+
+        This the base command name required to execute it. For example,
+        in ``?one two three`` the parent name would be ``one two``.
+        """
+        entries = []
+        command = self
+        while command.parent is not None:
+            command = command.parent
+            entries.append(command.name)
+
+        return ' '.join(reversed(entries))
+
+    @property
+    def qualified_name(self):
+        """Retrieves the fully qualified command name.
+
+        This is the full parent name with the command name as well.
+        For example, in ``?one two three`` the qualified name would be
+        ``one two three``.
+        """
+
+        parent = self.full_parent_name
+        if parent:
+            return parent + ' ' + self.name
+        else:
+            return self.name
+
+    def __str__(self):
+        return self.qualified_name
 
     @asyncio.coroutine
     def _parse_arguments(self, ctx):
-        try:
-            ctx.args = [] if self.instance is None else [self.instance]
-            ctx.kwargs = {}
-            args = ctx.args
-            kwargs = ctx.kwargs
+        ctx.args = [] if self.instance is None else [self.instance]
+        ctx.kwargs = {}
+        args = ctx.args
+        kwargs = ctx.kwargs
 
-            first = True
-            view = ctx.view
-            iterator = iter(self.params.items())
+        first = True
+        view = ctx.view
+        iterator = iter(self.params.items())
 
-            if self.instance is not None:
-                # we have 'self' as the first parameter so just advance
-                # the iterator and resume parsing
-                try:
-                    next(iterator)
-                except StopIteration:
-                    fmt = 'Callback for {0.name} command is missing "self" parameter.'
-                    raise discord.ClientException(fmt.format(self))
+        if self.instance is not None:
+            # we have 'self' as the first parameter so just advance
+            # the iterator and resume parsing
+            try:
+                next(iterator)
+            except StopIteration:
+                fmt = 'Callback for {0.name} command is missing "self" parameter.'
+                raise discord.ClientException(fmt.format(self))
 
-            for name, param in iterator:
-                if first and self.pass_context:
-                    args.append(ctx)
-                    first = False
-                    continue
+        for name, param in iterator:
+            if first and self.pass_context:
+                args.append(ctx)
+                first = False
+                continue
 
-                if param.kind == param.POSITIONAL_OR_KEYWORD:
-                    transformed = yield from self.transform(ctx, param)
-                    args.append(transformed)
-                elif param.kind == param.KEYWORD_ONLY:
-                    # kwarg only param denotes "consume rest" semantics
-                    if self.rest_is_raw:
-                        converter = self._get_converter(param)
-                        argument = view.read_rest()
-                        kwargs[name] = yield from self.do_conversion(ctx.bot, ctx.message, converter, argument)
-                    else:
-                        kwargs[name] = yield from self.transform(ctx, param)
-                    break
-                elif param.kind == param.VAR_POSITIONAL:
-                    while not view.eof:
-                        try:
-                            transformed = yield from self.transform(ctx, param)
-                            args.append(transformed)
-                        except RuntimeError:
-                            break
+            if param.kind == param.POSITIONAL_OR_KEYWORD:
+                transformed = yield from self.transform(ctx, param)
+                args.append(transformed)
+            elif param.kind == param.KEYWORD_ONLY:
+                # kwarg only param denotes "consume rest" semantics
+                if self.rest_is_raw:
+                    converter = self._get_converter(param)
+                    argument = view.read_rest()
+                    kwargs[name] = yield from self.do_conversion(ctx, converter, argument)
+                else:
+                    kwargs[name] = yield from self.transform(ctx, param)
+                break
+            elif param.kind == param.VAR_POSITIONAL:
+                while not view.eof:
+                    try:
+                        transformed = yield from self.transform(ctx, param)
+                        args.append(transformed)
+                    except RuntimeError:
+                        break
 
-        except CommandError as e:
-            self.handle_local_error(e, ctx)
-            ctx.bot.dispatch('command_error', e, ctx)
-            return False
-        return True
+        if not self.ignore_extra:
+            if not view.eof:
+                raise TooManyArguments('Too many arguments passed to ' + self.qualified_name)
+
 
     def _verify_checks(self, ctx):
-        try:
-            if not self.enabled:
-                raise DisabledCommand('{0.name} command is disabled'.format(self))
+        if not self.enabled:
+            raise DisabledCommand('{0.name} command is disabled'.format(self))
 
-            if self.no_pm and ctx.message.channel.is_private:
-                raise NoPrivateMessage('This command cannot be used in private messages.')
+        if self.no_pm and ctx.message.channel.is_private:
+            raise NoPrivateMessage('This command cannot be used in private messages.')
 
-            if not self.can_run(ctx):
-                raise CheckFailure('The check functions for command {0.name} failed.'.format(self))
-        except CommandError as exc:
-            self.handle_local_error(exc, ctx)
-            ctx.bot.dispatch('command_error', exc, ctx)
-            return False
+        if not ctx.bot.can_run(ctx):
+            raise CheckFailure('The global check functions for command {0.qualified_name} failed.'.format(self))
 
-        return True
+        if not self.can_run(ctx):
+            raise CheckFailure('The check functions for command {0.qualified_name} failed.'.format(self))
+
+    @asyncio.coroutine
+    def prepare(self, ctx):
+        ctx.command = self
+        self._verify_checks(ctx)
+        yield from self._parse_arguments(ctx)
+
+        if self._buckets.valid:
+            bucket = self._buckets.get_bucket(ctx)
+            retry_after = bucket.is_rate_limited()
+            if retry_after:
+                raise CommandOnCooldown(bucket, retry_after)
+
+    def reset_cooldown(self, ctx):
+        """Resets the cooldown on this command.
+
+        Parameters
+        -----------
+        ctx: :class:`Context`
+            The invocation context to reset the cooldown under.
+        """
+        if self._buckets.valid:
+            bucket = self._buckets.get_bucket(ctx)
+            bucket.reset()
 
     @asyncio.coroutine
     def invoke(self, ctx):
-        if not self._verify_checks(ctx):
-            return
+        yield from self.prepare(ctx)
 
-        if (yield from self._parse_arguments(ctx)):
-            injected = inject_context(ctx, self.callback)
-            yield from injected(*ctx.args, **ctx.kwargs)
+        # terminate the invoked_subcommand chain.
+        # since we're in a regular command (and not a group) then
+        # the invoked subcommand is None.
+        ctx.invoked_subcommand = None
+        injected = inject_context(ctx, self.callback)
+        yield from injected(*ctx.args, **ctx.kwargs)
 
     def error(self, coro):
         """A decorator that registers a coroutine as a local error handler.
@@ -520,6 +503,11 @@ class GroupMixin:
             `None` is returned instead.
         """
         command = self.commands.pop(name, None)
+
+        # does not exist
+        if command is None:
+            return None
+
         if name in command.aliases:
             # we're removing an alias so we don't want to remove the rest
             return command
@@ -596,9 +584,7 @@ class Group(GroupMixin, Command):
     def invoke(self, ctx):
         early_invoke = not self.invoke_without_command
         if early_invoke:
-            valid = self._verify_checks(ctx) and (yield from self._parse_arguments(ctx))
-            if not valid:
-                return
+            yield from self.prepare(ctx)
 
         view = ctx.view
         previous = view.index
@@ -607,8 +593,7 @@ class Group(GroupMixin, Command):
 
         if trigger:
             ctx.subcommand_passed = trigger
-            if trigger in self.commands:
-                ctx.invoked_subcommand = self.commands[trigger]
+            ctx.invoked_subcommand = self.commands.get(trigger, None)
 
         if early_invoke:
             injected = inject_context(ctx, self.callback)
@@ -621,11 +606,7 @@ class Group(GroupMixin, Command):
             # undo the trigger parsing
             view.index = previous
             view.previous = previous
-            valid = self._verify_checks(ctx) and (yield from self._parse_arguments(ctx))
-            if not valid:
-                return
-            injected = inject_context(ctx, self.callback)
-            yield from injected(*ctx.args, **ctx.kwargs)
+            yield from super().invoke(ctx)
 
 # Decorators
 
@@ -646,7 +627,7 @@ def command(name=None, cls=None, **attrs):
     -----------
     name : str
         The name to create the command with. By default this uses the
-        function named unchanged.
+        function name unchanged.
     cls
         The class to construct with. By default this is :class:`Command`.
         You usually do not change this.
@@ -675,6 +656,12 @@ def command(name=None, cls=None, **attrs):
         except AttributeError:
             checks = []
 
+        try:
+            cooldown = func.__commands_cooldown__
+            del func.__commands_cooldown__
+        except AttributeError:
+            cooldown = None
+
         help_doc = attrs.get('help')
         if help_doc is not None:
             help_doc = inspect.cleandoc(help_doc)
@@ -684,8 +671,8 @@ def command(name=None, cls=None, **attrs):
                 help_doc = help_doc.decode('utf-8')
 
         attrs['help'] = help_doc
-        fname = name or func.__name__.lower()
-        return cls(name=fname, callback=func, checks=checks, **attrs)
+        fname = name or func.__name__
+        return cls(name=fname, callback=func, checks=checks, cooldown=cooldown, **attrs)
 
     return decorator
 
@@ -886,3 +873,41 @@ def bot_has_permissions(**perms):
         permissions = ch.permissions_for(me)
         return all(getattr(permissions, perm, None) == value for perm, value in perms.items())
     return check(predicate)
+
+def cooldown(rate, per, type=BucketType.default):
+    """A decorator that adds a cooldown to a :class:`Command`
+    or its subclasses.
+
+    A cooldown allows a command to only be used a specific amount
+    of times in a specific time frame. These cooldowns can be based
+    either on a per-server, per-channel, per-user, or global basis.
+    Denoted by the third argument of ``type`` which must be of enum
+    type ``BucketType`` which could be either:
+
+    - ``BucketType.default`` for a global basis.
+    - ``BucketType.user`` for a per-user basis.
+    - ``BucketType.server`` for a per-server basis.
+    - ``BucketType.channel`` for a per-channel basis.
+
+    If a cooldown is triggered, then :exc:`CommandOnCooldown` is triggered in
+    :func:`on_command_error` and the local error handler.
+
+    A command can only have a single cooldown.
+
+    Parameters
+    ------------
+    rate: int
+        The number of times a command can be used before triggering a cooldown.
+    per: float
+        The amount of seconds to wait for a cooldown when it's been triggered.
+    type: ``BucketType``
+        The type of cooldown to have.
+    """
+
+    def decorator(func):
+        if isinstance(func, Command):
+            func._buckets = CooldownMapping(Cooldown(rate, per, type))
+        else:
+            func.__commands_cooldown__ = Cooldown(rate, per, type)
+        return func
+    return decorator

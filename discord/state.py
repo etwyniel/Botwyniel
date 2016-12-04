@@ -27,13 +27,15 @@ DEALINGS IN THE SOFTWARE.
 from .server import Server
 from .user import User
 from .game import Game
+from .emoji import Emoji
+from .reaction import Reaction
 from .message import Message
 from .channel import Channel, PrivateChannel
 from .member import Member
 from .role import Role
 from . import utils, compat
-from .enums import Status
-
+from .enums import Status, ChannelType, try_enum
+from .calls import GroupCall
 
 from collections import deque, namedtuple
 import copy, enum, math
@@ -49,11 +51,13 @@ log = logging.getLogger(__name__)
 ReadyState = namedtuple('ReadyState', ('launch', 'servers'))
 
 class ConnectionState:
-    def __init__(self, dispatch, chunker, max_messages, *, loop):
+    def __init__(self, dispatch, chunker, syncer, max_messages, *, loop):
         self.loop = loop
         self.max_messages = max_messages
         self.dispatch = dispatch
         self.chunker = chunker
+        self.syncer = syncer
+        self.is_bot = None
         self._listeners = []
         self.clear()
 
@@ -61,6 +65,7 @@ class ConnectionState:
         self.user = None
         self.sequence = None
         self.session_id = None
+        self._calls = {}
         self._servers = {}
         self._voice_clients = {}
         self._private_channels = {}
@@ -107,6 +112,10 @@ class ConnectionState:
     def _remove_voice_client(self, guild_id):
         self._voice_clients.pop(guild_id, None)
 
+    def _update_references(self, ws):
+        for vc in self.voice_clients:
+            vc.main_ws = ws
+
     @property
     def servers(self):
         return self._servers.values()
@@ -132,11 +141,13 @@ class ConnectionState:
 
     def _add_private_channel(self, channel):
         self._private_channels[channel.id] = channel
-        self._private_channels_by_user[channel.user.id] = channel
+        if channel.type is ChannelType.private:
+            self._private_channels_by_user[channel.user.id] = channel
 
     def _remove_private_channel(self, channel):
         self._private_channels.pop(channel.id, None)
-        self._private_channels_by_user.pop(channel.user.id, None)
+        if channel.type is ChannelType.private:
+            self._private_channels_by_user.pop(channel.user.id, None)
 
     def _get_message(self, msg_id):
         return utils.find(lambda m: m.id == msg_id, self.messages)
@@ -161,8 +172,9 @@ class ConnectionState:
             launch.set()
             yield from asyncio.sleep(2)
 
-        # get all the chunks
         servers = self._ready_state.servers
+
+        # get all the chunks
         chunks = []
         for server in servers:
             chunks.extend(self.chunks_needed(server))
@@ -179,6 +191,10 @@ class ConnectionState:
         # remove the state
         del self._ready_state
 
+        # call GUILD_SYNC after we're done chunking
+        if not self.is_bot:
+            compat.create_task(self.syncer([s.id for s in self.servers]), loop=self.loop)
+
         # dispatch the event
         self.dispatch('ready')
 
@@ -190,18 +206,20 @@ class ConnectionState:
         servers = self._ready_state.servers
         for guild in guilds:
             server = self._add_server_from_data(guild)
-            if server.large:
+            if server.large or not self.is_bot:
                 servers.append(server)
 
         for pm in data.get('private_channels'):
-            self._add_private_channel(PrivateChannel(id=pm['id'],
-                                     user=User(**pm['recipient'])))
+            self._add_private_channel(PrivateChannel(self.user, **pm))
 
         compat.create_task(self._delay_ready(), loop=self.loop)
 
+    def parse_resumed(self, data):
+        self.dispatch('resumed')
+
     def parse_message_create(self, data):
         channel = self.get_channel(data.get('channel_id'))
-        message = Message(channel=channel, **data)
+        message = self._create_message(channel=channel, **data)
         self.dispatch('message', message)
         self.messages.append(message)
 
@@ -212,17 +230,78 @@ class ConnectionState:
             self.dispatch('message_delete', found)
             self.messages.remove(found)
 
+    def parse_message_delete_bulk(self, data):
+        message_ids = set(data.get('ids', []))
+        to_be_deleted = list(filter(lambda m: m.id in message_ids, self.messages))
+        for msg in to_be_deleted:
+            self.dispatch('message_delete', msg)
+            self.messages.remove(msg)
+
     def parse_message_update(self, data):
         message = self._get_message(data.get('id'))
         if message is not None:
             older_message = copy.copy(message)
-            if 'content' not in data:
+            if 'call' in data:
+                # call state message edit
+                message._handle_call(data['call'])
+            elif 'content' not in data:
                 # embed only edit
                 message.embeds = data['embeds']
             else:
                 message._update(channel=message.channel, **data)
 
             self.dispatch('message_edit', older_message, message)
+
+    def parse_message_reaction_add(self, data):
+        message = self._get_message(data['message_id'])
+        if message is not None:
+            emoji = self._get_reaction_emoji(**data.pop('emoji'))
+            reaction = utils.get(message.reactions, emoji=emoji)
+
+            is_me = data['user_id'] == self.user.id
+
+            if not reaction:
+                reaction = Reaction(
+                    message=message, emoji=emoji, me=is_me, **data)
+                message.reactions.append(reaction)
+            else:
+                reaction.count += 1
+                if is_me:
+                    reaction.me = True
+
+            channel = self.get_channel(data['channel_id'])
+            member = self._get_member(channel, data['user_id'])
+
+            self.dispatch('reaction_add', reaction, member)
+
+    def parse_message_reaction_remove_all(self, data):
+        message =  self._get_message(data['message_id'])
+        if message is not None:
+            old_reactions = message.reactions.copy()
+            message.reactions.clear()
+            self.dispatch('reaction_clear', message, old_reactions)
+
+    def parse_message_reaction_remove(self, data):
+        message = self._get_message(data['message_id'])
+        if message is not None:
+            emoji = self._get_reaction_emoji(**data['emoji'])
+            reaction = utils.get(message.reactions, emoji=emoji)
+
+            # Eventual consistency means we can get out of order or duplicate removes.
+            if not reaction:
+                log.warning("Unexpected reaction remove {}".format(data))
+                return
+            
+            reaction.count -= 1
+            if data['user_id'] == self.user.id:
+                reaction.me = False
+            if reaction.count == 0:
+                message.reactions.remove(reaction)
+
+            channel = self.get_channel(data['channel_id'])
+            member = self._get_member(channel, data['user_id'])
+
+            self.dispatch('reaction_remove', reaction, member)
 
     def parse_presence_update(self, data):
         server = self._get_server(data.get('guild_id'))
@@ -242,7 +321,7 @@ class ConnectionState:
             member = self._make_member(server, data)
             server._add_member(member)
 
-        old_member = copy.copy(member)
+        old_member = member._copy()
         member.status = data.get('status')
         try:
             member.status = Status(member.status)
@@ -253,6 +332,7 @@ class ConnectionState:
         member.game = Game(**game) if game else None
         member.name = user.get('username', member.name)
         member.avatar = user.get('avatar', member.avatar)
+        member.discriminator = user.get('discriminator', member.discriminator)
 
         self.dispatch('member_update', old_member, member)
 
@@ -269,9 +349,17 @@ class ConnectionState:
                 self.dispatch('channel_delete', channel)
 
     def parse_channel_update(self, data):
+        channel_type = try_enum(ChannelType, data.get('type'))
+        channel_id = data.get('id')
+        if channel_type is ChannelType.group:
+            channel = self._get_private_channel(channel_id)
+            old_channel = copy.copy(channel)
+            channel._update_group(**data)
+            self.dispatch('channel_update', old_channel, channel)
+            return
+
         server = self._get_server(data.get('guild_id'))
         if server is not None:
-            channel_id = data.get('id')
             channel = server.get_channel(channel_id)
             if channel is not None:
                 old_channel = copy.copy(channel)
@@ -279,12 +367,10 @@ class ConnectionState:
                 self.dispatch('channel_update', old_channel, channel)
 
     def parse_channel_create(self, data):
-        is_private = data.get('is_private', False)
+        ch_type = try_enum(ChannelType, data.get('type'))
         channel = None
-        if is_private:
-            recipient = User(**data.get('recipient'))
-            pm_id = data.get('id')
-            channel = PrivateChannel(id=pm_id, user=recipient)
+        if ch_type in (ChannelType.group, ChannelType.private):
+            channel = PrivateChannel(self.user, **data)
             self._add_private_channel(channel)
         else:
             server = self._get_server(data.get('guild_id'))
@@ -293,6 +379,22 @@ class ConnectionState:
                 server._add_channel(channel)
 
         self.dispatch('channel_create', channel)
+
+    def parse_channel_recipient_add(self, data):
+        channel = self._get_private_channel(data.get('channel_id'))
+        user = User(**data.get('user', {}))
+        channel.recipients.append(user)
+        self.dispatch('group_join', channel, user)
+
+    def parse_channel_recipient_remove(self, data):
+        channel = self._get_private_channel(data.get('channel_id'))
+        user = User(**data.get('user', {}))
+        try:
+            channel.recipients.remove(user)
+        except ValueError:
+            pass
+        else:
+            self.dispatch('group_remove', channel, user)
 
     def _make_member(self, server, data):
         roles = [server.default_role]
@@ -319,6 +421,15 @@ class ConnectionState:
             if member is not None:
                 server._remove_member(member)
                 server._member_count -= 1
+
+                # remove them from the voice channel member list
+                vc = member.voice_channel
+                if vc is not None:
+                    try:
+                        vc.voice_members.remove(member)
+                    except:
+                        pass
+
                 self.dispatch('member_remove', member)
 
     def parse_guild_member_update(self, data):
@@ -327,7 +438,7 @@ class ConnectionState:
         member = server.get_member(user_id)
         if member is not None:
             user = data['user']
-            old_member = copy.copy(member)
+            old_member = member._copy()
             member.name = user['username']
             member.discriminator = user['discriminator']
             member.avatar = user['avatar']
@@ -347,6 +458,12 @@ class ConnectionState:
             # sort the roles by ID since they can be "randomised"
             member.roles.sort(key=lambda r: int(r.id))
             self.dispatch('member_update', old_member, member)
+
+    def parse_guild_emojis_update(self, data):
+        server = self._get_server(data.get('guild_id'))
+        before_emojis = server.emojis
+        server.emojis = [Emoji(server=server, **e) for e in data.get('emojis', [])]
+        self.dispatch('server_emojis_update', before_emojis, server.emojis)
 
     def _get_create_server(self, data):
         if data.get('unavailable') == False:
@@ -411,6 +528,10 @@ class ConnectionState:
         else:
             self.dispatch('server_join', server)
 
+    def parse_guild_sync(self, data):
+        server = self._get_server(data.get('id'))
+        server._sync(data)
+
     def parse_guild_update(self, data):
         server = self._get_server(data.get('id'))
         if server is not None:
@@ -436,7 +557,6 @@ class ConnectionState:
         self._remove_server(server)
         self.dispatch('server_remove', server)
 
-
     def parse_guild_ban_add(self, data):
         # we make the assumption that GUILD_BAN_ADD is done
         # before GUILD_MEMBER_REMOVE is called
@@ -460,10 +580,9 @@ class ConnectionState:
     def parse_guild_role_create(self, data):
         server = self._get_server(data.get('guild_id'))
         role_data = data.get('role', {})
-        everyone = server.id == role_data.get('id')
-        role = Role(everyone=everyone, **role_data)
-        server.roles.append(role)
-        self.dispatch('server_role_create', server, role)
+        role = Role(server=server, **role_data)
+        server._add_role(role)
+        self.dispatch('server_role_create', role)
 
     def parse_guild_role_delete(self, data):
         server = self._get_server(data.get('guild_id'))
@@ -471,11 +590,11 @@ class ConnectionState:
             role_id = data.get('role_id')
             role = utils.find(lambda r: r.id == role_id, server.roles)
             try:
-                server.roles.remove(role)
+                server._remove_role(role)
             except ValueError:
                 return
             else:
-                self.dispatch('server_role_delete', server, role)
+                self.dispatch('server_role_delete', role)
 
     def parse_guild_role_update(self, data):
         server = self._get_server(data.get('guild_id'))
@@ -492,7 +611,8 @@ class ConnectionState:
         members = data.get('members', [])
         for member in members:
             m = self._make_member(server, member)
-            if m.id not in server._members:
+            existing = server.get_member(m.id)
+            if existing is None or existing.joined_at is None:
                 server._add_member(m)
 
         # if the owner is offline, server.owner is potentially None
@@ -504,15 +624,21 @@ class ConnectionState:
 
     def parse_voice_state_update(self, data):
         server = self._get_server(data.get('guild_id'))
-        user_id = data.get('user_id')
         if server is not None:
-            if user_id == self.user.id:
+            channel = server.get_channel(data.get('channel_id'))
+            if data.get('user_id') == self.user.id:
                 voice = self._get_voice_client(server.id)
                 if voice is not None:
-                    voice.channel = server.get_channel(data.get('channel_id'))
+                    voice.channel = channel
 
-            updated_members = server._update_voice_state(data)
-            self.dispatch('voice_state_update', *updated_members)
+            before, after = server._update_voice_state(data)
+            if after is not None:
+                self.dispatch('voice_state_update', before, after)
+        else:
+            # in here we're either at private or group calls
+            call = self._calls.get(data.get('channel_id'), None)
+            if call is not None:
+                call._update_voice_state(data)
 
     def parse_typing_start(self, data):
         channel = self.get_channel(data.get('channel_id'))
@@ -531,6 +657,55 @@ class ConnectionState:
             if member is not None:
                 timestamp = datetime.datetime.utcfromtimestamp(data.get('timestamp'))
                 self.dispatch('typing', channel, member, timestamp)
+
+    def parse_call_create(self, data):
+        message = self._get_message(data.get('message_id'))
+        if message is not None:
+            call = GroupCall(call=message, **data)
+            self._calls[data['channel_id']] = call
+            self.dispatch('call', call)
+
+    def parse_call_update(self, data):
+        call = self._calls.get(data.get('channel_id'), None)
+        if call is not None:
+            before = copy.copy(call)
+            call._update(**data)
+            self.dispatch('call_update', before, call)
+
+    def parse_call_delete(self, data):
+        call = self._calls.pop(data.get('channel_id'), None)
+        if call is not None:
+            self.dispatch('call_remove', call)
+
+    def _get_member(self, channel, id):
+        if channel.is_private:
+            return utils.get(channel.recipients, id=id)
+        else:
+            return channel.server.get_member(id)
+
+    def _create_message(self, **message):
+        """Helper mostly for injecting reactions."""
+        reactions = [
+            self._create_reaction(**r) for r in message.pop('reactions', [])
+        ]
+        return Message(channel=message.pop('channel'),
+                       reactions=reactions, **message)
+
+    def _create_reaction(self, **reaction):
+        emoji = self._get_reaction_emoji(**reaction.pop('emoji'))
+        return Reaction(emoji=emoji, **reaction)
+
+    def _get_reaction_emoji(self, **data):
+        id = data['id']
+
+        if not id:
+            return data['name']
+
+        for server in self.servers:
+            for emoji in server.emojis:
+                if emoji.id == id:
+                    return emoji
+        return Emoji(server=None, **data)
 
     def get_channel(self, id):
         if id is None:

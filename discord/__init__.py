@@ -15,31 +15,35 @@ __title__ = 'discord'
 __author__ = 'Rapptz'
 __license__ = 'MIT'
 __copyright__ = 'Copyright 2015-2016 Rapptz'
-__version__ = '0.10.0-alpha'
+__version__ = '0.15.1'
 
-from .client import Client
+from .client import Client, AppInfo, ChannelPermissions
 from .user import User
 from .game import Game
+from .emoji import Emoji
 from .channel import Channel, PrivateChannel
 from .server import Server
-from .member import Member
+from .member import Member, VoiceState
 from .message import Message
 from .errors import *
-from .permissions import Permissions
+from .calls import CallMessage, GroupCall
+from .permissions import Permissions, PermissionOverwrite
 from .role import Role
 from .colour import Color, Colour
 from .invite import Invite
 from .object import Object
+from .reaction import Reaction
 from . import utils, opus, compat
 from .voice_client import VoiceClient
-from .enums import ChannelType, ServerRegion, Status
+from .enums import ChannelType, ServerRegion, Status, MessageType, VerificationLevel
 from collections import namedtuple
+from .embeds import Embed
 
 import logging
 
 VersionInfo = namedtuple('VersionInfo', 'major minor micro releaselevel serial')
 
-version_info = VersionInfo(major=0, minor=10, micro=0, releaselevel='alpha', serial=0)
+version_info = VersionInfo(major=0, minor=15, micro=1, releaselevel='final', serial=0)
 
 try:
     from logging import NullHandler

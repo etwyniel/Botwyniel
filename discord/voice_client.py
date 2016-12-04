@@ -50,17 +50,25 @@ import subprocess
 import shlex
 import functools
 import datetime
-import nacl.secret
+import audioop
+import inspect
 
 log = logging.getLogger(__name__)
 
+try:
+    import nacl.secret
+    has_nacl = True
+except ImportError:
+    has_nacl = False
+
 from . import utils, opus
 from .gateway import *
-from .errors import ClientException, InvalidArgument
+from .errors import ClientException, InvalidArgument, ConnectionClosed
 
 class StreamPlayer(threading.Thread):
     def __init__(self, stream, encoder, connected, player, after, **kwargs):
         threading.Thread.__init__(self, **kwargs)
+        self.daemon = True
         self.buff = stream
         self.frame_size = encoder.frame_size
         self.player = player
@@ -70,8 +78,13 @@ class StreamPlayer(threading.Thread):
         self._connected = connected
         self.after = after
         self.delay = encoder.frame_length / 1000.0
+        self._volume = 1.0
+        self._current_error = None
 
-    def run(self):
+        if after is not None and not callable(after):
+            raise TypeError('Expected a callable for the "after" parameter.')
+
+    def _do_run(self):
         self.loops = 0
         self._start = time.time()
         while not self._end.is_set():
@@ -86,6 +99,10 @@ class StreamPlayer(threading.Thread):
 
             self.loops += 1
             data = self.buff.read(self.frame_size)
+
+            if self._volume != 1.0:
+                data = audioop.mul(data, 2, min(self._volume, 2.0))
+
             if len(data) != self.frame_size:
                 self.stop()
                 break
@@ -95,13 +112,41 @@ class StreamPlayer(threading.Thread):
             delay = max(0, self.delay + (next_time - time.time()))
             time.sleep(delay)
 
+    def run(self):
+        try:
+            self._do_run()
+        except Exception as e:
+            self._current_error = e
+            self.stop()
+
     def stop(self):
         self._end.set()
-        if callable(self.after):
+        if self.after is not None:
             try:
-                self.after()
+                arg_count = len(inspect.signature(self.after).parameters)
+            except:
+                # if this ended up happening, a mistake was made.
+                arg_count = 0
+
+            try:
+                if arg_count == 0:
+                    self.after()
+                else:
+                    self.after(self)
             except:
                 pass
+
+    @property
+    def error(self):
+        return self._current_error
+
+    @property
+    def volume(self):
+        return self._volume
+
+    @volume.setter
+    def volume(self, value):
+        self._volume = max(value, 0.0)
 
     def pause(self):
         self._resumed.clear()
@@ -164,6 +209,9 @@ class VoiceClient:
         The event loop that the voice client is running on.
     """
     def __init__(self, user, main_ws, session_id, channel, data, loop):
+        if not has_nacl:
+            raise RuntimeError("PyNaCl library needed in order to use voice")
+
         self.user = user
         self.main_ws = main_ws
         self.channel = channel
@@ -177,6 +225,8 @@ class VoiceClient:
         self.timestamp = 0
         self.encoder = opus.Encoder(48000, 2)
         log.info('created opus encoder with {0.__dict__}'.format(self.encoder))
+
+    warn_nacl = not has_nacl
 
     @property
     def server(self):
@@ -210,6 +260,22 @@ class VoiceClient:
                 self._connected.set()
                 break
 
+        self.loop.create_task(self.poll_voice_ws())
+
+    @asyncio.coroutine
+    def poll_voice_ws(self):
+        """|coro|
+        Reads from the voice websocket while connected.
+        """
+        while self._connected.is_set():
+            try:
+                yield from self.ws.poll_event()
+            except ConnectionClosed as e:
+                if e.code == 1000:
+                    break
+                else:
+                    raise
+
     @asyncio.coroutine
     def disconnect(self):
         """|coro|
@@ -222,10 +288,38 @@ class VoiceClient:
         if not self._connected.is_set():
             return
 
-        self.socket.close()
         self._connected.clear()
-        yield from self.ws.close()
-        yield from self.main_ws.voice_state(self.guild_id, None, self_mute=True)
+        try:
+            yield from self.ws.close()
+            yield from self.main_ws.voice_state(self.guild_id, None, self_mute=True)
+        finally:
+            self.socket.close()
+
+    @asyncio.coroutine
+    def move_to(self, channel):
+        """|coro|
+
+        Moves you to a different voice channel.
+
+        .. warning::
+
+            :class:`Object` instances do not work with this function.
+
+        Parameters
+        -----------
+        channel : :class:`Channel`
+            The channel to move to. Must be a voice channel.
+
+        Raises
+        -------
+        InvalidArgument
+            Not a voice channel.
+        """
+
+        if str(getattr(channel, 'type', 'text')) != 'voice':
+            raise InvalidArgument('Must be a voice channel.')
+
+        yield from self.main_ws.voice_state(self.guild_id, channel.id)
 
     def is_connected(self):
         """bool : Indicates if the voice client is connected to voice."""
@@ -251,7 +345,7 @@ class VoiceClient:
         # Encrypt and return the data
         return header + box.encrypt(bytes(data), bytes(nonce)).ciphertext
 
-    def create_ffmpeg_player(self, filename, *, use_avconv=False, pipe=False, options=None, before_options=None, headers=None, after=None):
+    def create_ffmpeg_player(self, filename, *, use_avconv=False, pipe=False, stderr=None, options=None, before_options=None, headers=None, after=None):
         """Creates a stream player for ffmpeg that launches in a separate thread to play
         audio.
 
@@ -284,6 +378,9 @@ class VoiceClient:
         pipe : bool
             If true, denotes that ``filename`` parameter will be passed
             to the stdin of ffmpeg.
+        stderr
+            A file-like object or ``subprocess.PIPE`` to pass to the Popen
+            constructor.
         options : str
             Extra command line flags to pass to ``ffmpeg`` after the ``-i`` flag.
         before_options : str
@@ -305,7 +402,7 @@ class VoiceClient:
             A stream player with specific operations.
             See :meth:`create_stream_player`.
         """
-        command = '/app/.heroku/vendor/bin/ffmpeg' if not use_avconv else 'avconv'
+        command = 'ffmpeg' if not use_avconv else 'avconv'
         input_name = '-' if pipe else shlex.quote(filename)
         before_args = ""
         if isinstance(headers, dict):
@@ -327,7 +424,7 @@ class VoiceClient:
         stdin = None if not pipe else filename
         args = shlex.split(cmd)
         try:
-            p = subprocess.Popen(args, stdin=stdin, stdout=subprocess.PIPE)
+            p = subprocess.Popen(args, stdin=stdin, stdout=subprocess.PIPE, stderr=stderr)
             return ProcessPlayer(p, self, after)
         except FileNotFoundError as e:
             raise ClientException('ffmpeg/avconv was not found in your PATH environment variable') from e
@@ -384,7 +481,7 @@ class VoiceClient:
         | player.views        | How many views the audio stream has.                    |
         +---------------------+---------------------------------------------------------+
 
-        .. _ytdl: https://github.com/rg3/youtube-dl/blob/master/youtube_dl/YoutubeDL.py#L117-L265
+        .. _ytdl: https://github.com/rg3/youtube-dl/blob/master/youtube_dl/YoutubeDL.py#L128-L278
 
         Examples
         ----------
@@ -402,7 +499,7 @@ class VoiceClient:
             to ``ffmpeg`` or ``avconv`` to convert to PCM bytes.
         ytdl_options : dict
             A dictionary of options to pass into the ``YoutubeDL`` instance.
-            See `the documentation <ydl>`_ for more details.
+            See `the documentation <ytdl>`_ for more details.
         \*\*kwargs
             The rest of the keyword arguments are forwarded to
             :func:`create_ffmpeg_player`.
@@ -505,7 +602,8 @@ class VoiceClient:
         The stream player assumes that ``stream.read`` is a valid function
         that returns a *bytes-like* object.
 
-        The finalizer, ``after`` is called after the stream has been exhausted.
+        The finalizer, ``after`` is called after the stream has been exhausted
+        or an error occurred (see below).
 
         The following operations are valid on the ``StreamPlayer`` object:
 
@@ -524,11 +622,23 @@ class VoiceClient:
         +---------------------+-----------------------------------------------------+
         | player.resume()     | Resumes the audio stream.                           |
         +---------------------+-----------------------------------------------------+
+        | player.volume       | Allows you to set the volume of the stream. 1.0 is  |
+        |                     | equivalent to 100% and 0.0 is equal to 0%. The      |
+        |                     | maximum the volume can be set to is 2.0 for 200%.   |
+        +---------------------+-----------------------------------------------------+
+        | player.error        | The exception that stopped the player. If no error  |
+        |                     | happened, then this returns None.                   |
+        +---------------------+-----------------------------------------------------+
 
         The stream must have the same sampling rate as the encoder and the same
         number of channels. The defaults are 48000 Hz and 2 channels. You
         could change the encoder options by using :meth:`encoder_options`
         but this must be called **before** this function.
+
+        If an error happens while the player is running, the exception is caught and
+        the player is then stopped. The caught exception could then be retrieved
+        via  ``player.error``\. When the player is stopped in this matter, the
+        finalizer under ``after`` is called.
 
         Parameters
         -----------
@@ -536,8 +646,9 @@ class VoiceClient:
             The stream object to read from.
         after
             The finalizer that is called after the stream is exhausted.
-            All exceptions it throws are silently discarded. It is called
-            without parameters.
+            All exceptions it throws are silently discarded. This function
+            can have either no parameters or a single parameter taking in the
+            current player.
 
         Returns
         --------

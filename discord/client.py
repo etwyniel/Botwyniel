@@ -25,7 +25,6 @@ DEALINGS IN THE SOFTWARE.
 """
 
 from . import __version__ as library_version
-from . import endpoints
 from .user import User
 from .member import Member
 from .channel import Channel, PrivateChannel
@@ -33,30 +32,52 @@ from .server import Server
 from .message import Message
 from .invite import Invite
 from .object import Object
+from .reaction import Reaction
 from .role import Role
 from .errors import *
 from .state import ConnectionState
-from .permissions import Permissions
+from .permissions import Permissions, PermissionOverwrite
 from . import utils, compat
-from .enums import ChannelType, ServerRegion
+from .enums import ChannelType, ServerRegion, VerificationLevel, Status
 from .voice_client import VoiceClient
 from .iterators import LogsFromIterator
 from .gateway import *
+from .emoji import Emoji
+from .http import HTTPClient
 
 import asyncio
 import aiohttp
 import websockets
 
 import logging, traceback
-import sys, re
+import sys, re, io, enum
 import tempfile, os, hashlib
 import itertools
-from random import randint as random_integer
+import datetime
+from collections import namedtuple
+from os.path import split as path_split
 
 PY35 = sys.version_info >= (3, 5)
 log = logging.getLogger(__name__)
-request_logging_format = '{method} {response.url} has returned {response.status}'
-request_success_log = '{response.url} with {json} received {data}'
+
+AppInfo = namedtuple('AppInfo', 'id name description icon owner')
+WaitedReaction = namedtuple('WaitedReaction', 'reaction user')
+
+def app_info_icon_url(self):
+    """Retrieves the application's icon_url if it exists. Empty string otherwise."""
+    if not self.icon:
+        return ''
+
+    return 'https://cdn.discordapp.com/app-icons/{0.id}/{0.icon}.jpg'.format(self)
+
+AppInfo.icon_url = property(app_info_icon_url)
+
+class WaitForType(enum.Enum):
+    message  = 0
+    reaction = 1
+
+ChannelPermissions = namedtuple('ChannelPermissions', 'target overwrite')
+ChannelPermissions.__new__.__defaults__ = (PermissionOverwrite(),)
 
 class Client:
     """Represents a client connection that connects to Discord.
@@ -85,6 +106,10 @@ class Client:
     connector : aiohttp.BaseConnector
         The `connector`_ to use for connection pooling. Useful for proxies, e.g.
         with a `ProxyConnector`_.
+    shard_id : Optional[int]
+        Integer starting at 0 and less than shard_count.
+    shard_count : Optional[int]
+        The total number of shards.
 
     Attributes
     -----------
@@ -105,7 +130,7 @@ class Client:
     email
         The email used to login. This is only set if login is successful,
         otherwise it's None.
-    gateway
+    ws
         The websocket gateway the client is currently connected to. Could be None.
     loop
         The `event loop`_ that the client uses for HTTP requests and websocket operations.
@@ -113,55 +138,56 @@ class Client:
     """
     def __init__(self, *, loop=None, **options):
         self.ws = None
-        self.token = None
+        self.email = None
         self.loop = asyncio.get_event_loop() if loop is None else loop
         self._listeners = []
         self.cache_auth = options.get('cache_auth', True)
+        self.shard_id = options.get('shard_id')
+        self.shard_count = options.get('shard_count')
 
         max_messages = options.get('max_messages')
         if max_messages is None or max_messages < 100:
             max_messages = 5000
 
-        self.connection = ConnectionState(self.dispatch, self.request_offline_members, max_messages, loop=self.loop)
-
-        # Blame Jake for this
-        user_agent = 'DiscordBot (https://github.com/Rapptz/discord.py {0}) Python/{1[0]}.{1[1]} aiohttp/{2}'
-
-        self.headers = {
-            'content-type': 'application/json',
-            'user-agent': user_agent.format(library_version, sys.version_info, aiohttp.__version__)
-        }
+        self.connection = ConnectionState(self.dispatch, self.request_offline_members,
+                                          self._syncer, max_messages, loop=self.loop)
 
         connector = options.pop('connector', None)
-        self.session = aiohttp.ClientSession(loop=self.loop, connector=connector)
+        self.http = HTTPClient(connector, loop=self.loop)
 
         self._closed = asyncio.Event(loop=self.loop)
         self._is_logged_in = asyncio.Event(loop=self.loop)
         self._is_ready = asyncio.Event(loop=self.loop)
 
+        if VoiceClient.warn_nacl:
+            VoiceClient.warn_nacl = False
+            log.warning("PyNaCl is not installed, voice will NOT be supported")
+
     # internals
+
+    @asyncio.coroutine
+    def _syncer(self, guilds):
+        yield from self.ws.request_sync(guilds)
 
     def _get_cache_filename(self, email):
         filename = hashlib.md5(email.encode('utf-8')).hexdigest()
         return os.path.join(tempfile.gettempdir(), 'discord_py', filename)
 
-    @asyncio.coroutine
-    def _login_via_cache(self, email, password):
+    def _get_cache_token(self, email, password):
         try:
             log.info('attempting to login via cache')
             cache_file = self._get_cache_filename(email)
             self.email = email
             with open(cache_file, 'r') as f:
                 log.info('login cache file found')
-                self.token = f.read()
-                self.headers['authorization'] = self.token
+                return f.read()
 
             # at this point our check failed
             # so we have to login and get the proper token and then
             # redo the cache
         except OSError:
             log.info('a problem occurred while opening login cache')
-            pass # file not found et al
+            return None # file not found et al
 
     def _update_cache(self, email, password):
         try:
@@ -169,14 +195,41 @@ class Client:
             os.makedirs(os.path.dirname(cache_file), exist_ok=True)
             with os.fdopen(os.open(cache_file, os.O_WRONLY | os.O_CREAT, 0o0600), 'w') as f:
                 log.info('updating login cache')
-                f.write(self.token)
+                f.write(self.http.token)
         except OSError:
             log.info('a problem occurred while updating the login cache')
             pass
 
+    def handle_reaction_add(self, reaction, user):
+        removed = []
+        for i, (condition, future, event_type) in enumerate(self._listeners):
+            if event_type is not WaitForType.reaction:
+                continue
+
+            if future.cancelled():
+                removed.append(i)
+                continue
+
+            try:
+                result = condition(reaction, user)
+            except Exception as e:
+                future.set_exception(e)
+                removed.append(i)
+            else:
+                if result:
+                    future.set_result(WaitedReaction(reaction, user))
+                    removed.append(i)
+
+
+        for idx in reversed(removed):
+            del self._listeners[idx]
+
     def handle_message(self, message):
         removed = []
-        for i, (condition, future) in enumerate(self._listeners):
+        for i, (condition, future, event_type) in enumerate(self._listeners):
+            if event_type is not WaitForType.message:
+                continue
+
             if future.cancelled():
                 removed.append(i)
                 continue
@@ -210,20 +263,30 @@ class Client:
 
     @asyncio.coroutine
     def _resolve_destination(self, destination):
-        if isinstance(destination, (Channel, PrivateChannel, Server)):
-            return destination.id
+        if isinstance(destination, Channel):
+            return destination.id, destination.server.id
+        elif isinstance(destination, PrivateChannel):
+            return destination.id, None
+        elif isinstance(destination, Server):
+            return destination.id, destination.id
         elif isinstance(destination, User):
             found = self.connection._get_private_channel_by_user(destination.id)
             if found is None:
                 # Couldn't find the user, so start a PM with them first.
                 channel = yield from self.start_private_message(destination)
-                return channel.id
+                return channel.id, None
             else:
-                return found.id
+                return found.id, None
         elif isinstance(destination, Object):
-            return destination.id
+            found = self.get_channel(destination.id)
+            if found is not None:
+                return (yield from self._resolve_destination(found))
+
+            # couldn't find it in cache so YOLO
+            return destination.id, destination.id
         else:
-            raise InvalidArgument('Destination must be Channel, PrivateChannel, User, or Object')
+            fmt = 'Destination must be Channel, PrivateChannel, User, or Object. Received {0.__class__.__name__}'
+            raise InvalidArgument(fmt.format(destination))
 
     def __getattr__(self, name):
         if name in ('user', 'servers', 'private_channels', 'messages', 'voice_clients'):
@@ -277,53 +340,32 @@ class Client:
     # login state management
 
     @asyncio.coroutine
-    def _login_1(self, token):
+    def _login_1(self, token, **kwargs):
         log.info('logging in using static token')
-        self.token = token
-        self.email = None
-        self.headers['authorization'] = 'Bot {}'.format(self.token)
-        resp = yield from self.session.get(endpoints.ME, headers=self.headers)
-        yield from resp.release()
-        log.debug(request_logging_format.format(method='GET', response=resp))
-
-        if resp.status != 200:
-            if resp.status == 401:
-                raise LoginFailure('Improper token has been passed.')
-            else:
-                raise HTTPException(resp, None)
-
-        log.info('token auth returned status code {}'.format(resp.status))
+        is_bot = kwargs.pop('bot', True)
+        data = yield from self.http.static_login(token, bot=is_bot)
+        self.email = data.get('email', None)
+        self.connection.is_bot = is_bot
         self._is_logged_in.set()
 
     @asyncio.coroutine
-    def _login_2(self, email, password):
+    def _login_2(self, email, password, **kwargs):
         # attempt to read the token from cache
+        self.connection.is_bot = False
+
         if self.cache_auth:
-            yield from self._login_via_cache(email, password)
-            if self.is_logged_in:
+            token = self._get_cache_token(email, password)
+            try:
+                yield from self.http.static_login(token, bot=False)
+            except:
+                log.info('cache auth token is out of date')
+            else:
+                self._is_logged_in.set()
                 return
 
-        payload = {
-            'email': email,
-            'password': password
-        }
 
-        data = utils.to_json(payload)
-        resp = yield from self.session.post(endpoints.LOGIN, data=data, headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=resp))
-        if resp.status != 200:
-            yield from resp.release()
-            if resp.status == 400:
-                raise LoginFailure('Improper credentials have been passed.')
-            else:
-                raise HTTPException(resp, None)
-
-        log.info('logging in returned status code {}'.format(resp.status))
+        yield from self.http.email_login(email, password)
         self.email = email
-
-        body = yield from resp.json()
-        self.token = body['token']
-        self.headers['authorization'] = self.token
         self._is_logged_in.set()
 
         # since we went through all this trouble
@@ -332,7 +374,7 @@ class Client:
             self._update_cache(email, password)
 
     @asyncio.coroutine
-    def login(self, *args):
+    def login(self, *args, **kwargs):
         """|coro|
 
         Logs in the client with the specified credentials.
@@ -350,6 +392,13 @@ class Client:
         More than 2 parameters or less than 1 parameter raises a
         :exc:`TypeError`.
 
+        Parameters
+        -----------
+        bot : bool
+            Keyword argument that specifies if the account logging on is a bot
+            token or not. Only useful for logging in with a static token.
+            Ignored for the email and password combo. Defaults to ``True``.
+
         Raises
         ------
         LoginFailure
@@ -364,21 +413,18 @@ class Client:
 
         n = len(args)
         if n in (2, 1):
-            yield from getattr(self, '_login_' + str(n))(*args)
+            yield from getattr(self, '_login_' + str(n))(*args, **kwargs)
         else:
             raise TypeError('login() takes 1 or 2 positional arguments but {} were given'.format(n))
-
 
     @asyncio.coroutine
     def logout(self):
         """|coro|
 
-        Logs out of Discord and closes all connections."""
-        response = yield from self.session.post(endpoints.LOGOUT, headers=self.headers)
-        yield from response.release()
+        Logs out of Discord and closes all connections.
+        """
         yield from self.close()
         self._is_logged_in.clear()
-        log.debug(request_logging_format.format(method='POST', response=response))
 
     @asyncio.coroutine
     def connect(self):
@@ -400,9 +446,10 @@ class Client:
         while not self.is_closed:
             try:
                 yield from self.ws.poll_event()
-            except ReconnectWebSocket:
-                log.info('Reconnecting the websocket.')
-                self.ws = yield from DiscordWebSocket.from_client(self)
+            except (ReconnectWebSocket, ResumeWebSocket) as e:
+                resume = type(e) is ResumeWebSocket
+                log.info('Got ' + type(e).__name__)
+                self.ws = yield from DiscordWebSocket.from_client(self, resume=resume)
             except ConnectionClosed as e:
                 yield from self.close()
                 if e.code != 1000:
@@ -417,27 +464,33 @@ class Client:
         if self.is_closed:
             return
 
+        for voice in list(self.voice_clients):
+            try:
+                yield from voice.disconnect()
+            except:
+                # if an error happens during disconnects, disregard it.
+                pass
+
+            self.connection._remove_voice_client(voice.server.id)
+
         if self.ws is not None and self.ws.open:
             yield from self.ws.close()
 
-        for voice in list(self.voice_clients):
-            yield from voice.disconnect()
-            self.connection._remove_voice_client(voice.server.id)
 
-        yield from self.session.close()
+        yield from self.http.close()
         self._closed.set()
         self._is_ready.clear()
 
     @asyncio.coroutine
-    def start(self, *args):
+    def start(self, *args, **kwargs):
         """|coro|
 
         A shorthand coroutine for :meth:`login` + :meth:`connect`.
         """
-        yield from self.login(*args)
+        yield from self.login(*args, **kwargs)
         yield from self.connect()
 
-    def run(self, *args):
+    def run(self, *args, **kwargs):
         """A blocking call that abstracts away the `event loop`_
         initialisation from you.
 
@@ -448,7 +501,7 @@ class Client:
         Roughly Equivalent to: ::
 
             try:
-                loop.run_until_complete(start(*args))
+                loop.run_until_complete(start(*args, **kwargs))
             except KeyboardInterrupt:
                 loop.run_until_complete(logout())
                 # cancel all tasks lingering
@@ -463,14 +516,17 @@ class Client:
         """
 
         try:
-            self.loop.run_until_complete(self.start(*args))
+            self.loop.run_until_complete(self.start(*args, **kwargs))
         except KeyboardInterrupt:
             self.loop.run_until_complete(self.logout())
             pending = asyncio.Task.all_tasks()
             gathered = asyncio.gather(*pending)
             try:
                 gathered.cancel()
-                self.loop.run_forever()
+                self.loop.run_until_complete(gathered)
+
+                # we want to retrieve any exceptions to make sure that
+                # they don't nag us about it being un-retrieved.
                 gathered.exception()
             except:
                 pass
@@ -498,6 +554,12 @@ class Client:
     def get_server(self, id):
         """Returns a :class:`Server` with the given ID. If not found, returns None."""
         return self.connection._get_server(id)
+
+    def get_all_emojis(self):
+        """Returns a generator with every :class:`Emoji` the client can see."""
+        for server in self.servers:
+            for emoji in server.emojis:
+                yield emoji
 
     def get_all_channels(self):
         """A generator that retrieves every :class:`Channel` the client can 'access'.
@@ -585,45 +647,45 @@ class Client:
         .. code-block:: python
             :emphasize-lines: 5
 
-            @client.async_event
-            def on_message(message):
-                if message.content.startswith('$greet')
-                    yield from client.send_message(message.channel, 'Say hello')
-                    msg = yield from client.wait_for_message(author=message.author, content='hello')
-                    yield from client.send_message(message.channel, 'Hello.')
+            @client.event
+            async def on_message(message):
+                if message.content.startswith('$greet'):
+                    await client.send_message(message.channel, 'Say hello')
+                    msg = await client.wait_for_message(author=message.author, content='hello')
+                    await client.send_message(message.channel, 'Hello.')
 
         Asking for a follow-up question:
 
         .. code-block:: python
             :emphasize-lines: 6
 
-            @client.async_event
-            def on_message(message):
-                if message.content.startswith('$start')
-                    yield from client.send_message(message.channel, 'Type $stop 4 times.')
+            @client.event
+            async def on_message(message):
+                if message.content.startswith('$start'):
+                    await client.send_message(message.channel, 'Type $stop 4 times.')
                     for i in range(4):
-                        msg = yield from client.wait_for_message(author=message.author, content='$stop')
+                        msg = await client.wait_for_message(author=message.author, content='$stop')
                         fmt = '{} left to go...'
-                        yield from client.send_message(message.channel, fmt.format(3 - i))
+                        await client.send_message(message.channel, fmt.format(3 - i))
 
-                    yield from client.send_message(message.channel, 'Good job!')
+                    await client.send_message(message.channel, 'Good job!')
 
         Advanced filters using ``check``:
 
         .. code-block:: python
             :emphasize-lines: 9
 
-            @client.async_event
-            def on_message(message):
+            @client.event
+            async def on_message(message):
                 if message.content.startswith('$cool'):
-                    yield from client.send_message(message.channel, 'Who is cool? Type $name namehere')
+                    await client.send_message(message.channel, 'Who is cool? Type $name namehere')
 
                     def check(msg):
                         return msg.content.startswith('$name')
 
-                    message = yield from client.wait_for_message(author=message.author, check=check)
+                    message = await client.wait_for_message(author=message.author, check=check)
                     name = message.content[len('$name'):].strip()
-                    yield from client.send_message(message.channel, '{} is cool indeed'.format(name))
+                    await client.send_message(message.channel, '{} is cool indeed'.format(name))
 
 
         Parameters
@@ -664,12 +726,121 @@ class Client:
             return result
 
         future = asyncio.Future(loop=self.loop)
-        self._listeners.append((predicate, future))
+        self._listeners.append((predicate, future, WaitForType.message))
         try:
             message = yield from asyncio.wait_for(future, timeout, loop=self.loop)
         except asyncio.TimeoutError:
             message = None
         return message
+
+
+    @asyncio.coroutine
+    def wait_for_reaction(self, emoji=None, *, user=None, timeout=None, message=None, check=None):
+        """|coro|
+
+        Waits for a message reaction from Discord. This is similar to :meth:`wait_for_message`
+        and could be seen as another :func:`on_reaction_add` event outside of the actual event.
+        This could be used for follow up situations.
+
+        Similar to :meth:`wait_for_message`, the keyword arguments are combined using logical
+        AND operator. The ``check`` keyword argument can be used to pass in more complicated
+        checks and must a regular function taking in two arguments, ``(reaction, user)``. It
+        must not be a coroutine.
+
+        The ``timeout`` parameter is passed into asyncio.wait_for. By default, it
+        does not timeout. Instead of throwing ``asyncio.TimeoutError`` the coroutine
+        catches the exception and returns ``None`` instead of a the ``(reaction, user)``
+        tuple.
+
+        If the ``check`` predicate throws an exception, then the exception is propagated.
+
+        The ``emoji`` parameter can be either a :class:`Emoji`, a ``str`` representing
+        an emoji, or a sequence of either type. If the ``emoji`` parameter is a sequence
+        then the first reaction emoji that is in the list is returned. If ``None`` is
+        passed then the first reaction emoji used is returned.
+
+        This function returns the **first reaction that meets the requirements**.
+
+        Examples
+        ---------
+
+        Basic Example:
+
+        .. code-block:: python
+
+            @client.event
+            async def on_message(message):
+                if message.content.startswith('$react'):
+                    msg = await client.send_message(message.channel, 'React with thumbs up or thumbs down.')
+                    res = await client.wait_for_reaction(['\N{THUMBS UP SIGN}', '\N{THUMBS DOWN SIGN}'], message=msg)
+                    await client.send_message(message.channel, '{.user} reacted with {.reaction.emoji}!'.format(res))
+
+        Checking for reaction emoji regardless of skin tone:
+
+        .. code-block:: python
+
+            @client.event
+            async def on_message(message):
+                if message.content.startswith('$react'):
+                    msg = await client.send_message(message.channel, 'React with thumbs up or thumbs down.')
+
+                    def check(reaction, user):
+                        e = str(reaction.emoji)
+                        return e.startswith(('\N{THUMBS UP SIGN}', '\N{THUMBS DOWN SIGN}'))
+
+                    res = await client.wait_for_reaction(message=msg, check=check)
+                    await client.send_message(message.channel, '{.user} reacted with {.reaction.emoji}!'.format(res))
+
+        Parameters
+        -----------
+        timeout: float
+            The number of seconds to wait before returning ``None``.
+        user: :class:`Member` or :class:`User`
+            The user the reaction must be from.
+        emoji: str or :class:`Emoji` or sequence
+            The emoji that we are waiting to react with.
+        message: :class:`Message`
+            The message that we want the reaction to be from.
+        check: function
+            A predicate for other complicated checks. The predicate must take
+            ``(reaction, user)`` as its two parameters, which ``reaction`` being a
+            :class:`Reaction` and ``user`` being either a :class:`User` or a
+            :class:`Member`.
+
+        Returns
+        --------
+        namedtuple
+            A namedtuple with attributes ``reaction`` and ``user`` similar to :func:`on_reaction_add`.
+        """
+
+        if emoji is None:
+            emoji_check = lambda r: True
+        elif isinstance(emoji, (str, Emoji)):
+            emoji_check = lambda r: r.emoji == emoji
+        else:
+            emoji_check = lambda r: r.emoji in emoji
+
+        def predicate(reaction, reaction_user):
+            result = emoji_check(reaction)
+
+            if message is not None:
+                result = result and message.id == reaction.message.id
+
+            if user is not None:
+                result = result and user.id == reaction_user.id
+
+            if callable(check):
+                # the exception thrown by check is propagated through the future.
+                result = result and check(reaction, reaction_user)
+
+            return result
+
+        future = asyncio.Future(loop=self.loop)
+        self._listeners.append((predicate, future, WaitForType.reaction))
+        try:
+            return (yield from asyncio.wait_for(future, timeout, loop=self.loop))
+        except asyncio.TimeoutError:
+            return None
 
     # event registration
 
@@ -742,43 +913,159 @@ class Client:
         if not isinstance(user, User):
             raise InvalidArgument('user argument must be a User')
 
-        payload = {
-            'recipient_id': user.id
-        }
-
-        url = '{}/channels'.format(endpoints.ME)
-        r = yield from self.session.post(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=r))
-        yield from utils._verify_successful_response(r)
-        data = yield from r.json()
-        log.debug(request_success_log.format(response=r, json=payload, data=data))
-        channel = PrivateChannel(id=data['id'], user=user)
+        data = yield from self.http.start_private_message(user.id)
+        channel = PrivateChannel(me=self.user, **data)
         self.connection._add_private_channel(channel)
         return channel
 
     @asyncio.coroutine
-    def _rate_limit_helper(self, name, method, url, data, retries=0):
-        resp = yield from self.session.request(method, url, data=data, headers=self.headers)
-        tmp = request_logging_format.format(method=method, response=resp)
-        log_fmt = 'In {}, {}'.format(name, tmp)
-        log.debug(log_fmt)
+    def add_reaction(self, message, emoji):
+        """|coro|
 
-        if resp.status == 502 and retries < 5:
-            # retry the 502 request unconditionally
-            log.info('Retrying the 502 request to ' + name)
-            yield from asyncio.sleep(retries + 1)
-            return (yield from self._rate_limit_helper(name, method, url, data, retries + 1))
+        Add a reaction to the given message.
 
-        if resp.status == 429:
-            retry = float(resp.headers['Retry-After']) / 1000.0
-            yield from resp.release()
-            yield from asyncio.sleep(retry)
-            return (yield from self._rate_limit_helper(name, method, url, data, retries))
+        The message must be a :class:`Message` that exists. emoji may be a unicode emoji,
+        or a custom server :class:`Emoji`.
 
-        return resp
+        Parameters
+        ------------
+        message : :class:`Message`
+            The message to react to.
+        emoji : :class:`Emoji` or str
+            The emoji to react with.
+
+        Raises
+        --------
+        HTTPException
+            Adding the reaction failed.
+        Forbidden
+            You do not have the proper permissions to react to the message.
+        NotFound
+            The message or emoji you specified was not found.
+        InvalidArgument
+            The message or emoji parameter is invalid.
+        """
+        if not isinstance(message, Message):
+            raise InvalidArgument('message argument must be a Message')
+        if not isinstance(emoji, (str, Emoji)):
+            raise InvalidArgument('emoji argument must be a string or Emoji')
+
+        if isinstance(emoji, Emoji):
+            emoji = '{}:{}'.format(emoji.name, emoji.id)
+
+        yield from self.http.add_reaction(message.id, message.channel.id, emoji)
 
     @asyncio.coroutine
-    def send_message(self, destination, content, *, tts=False):
+    def remove_reaction(self, message, emoji, member):
+        """|coro|
+
+        Remove a reaction by the member from the given message.
+
+        If member != server.me, you need Manage Messages to remove the reaction.
+
+        The message must be a :class:`Message` that exists. emoji may be a unicode emoji,
+        or a custom server :class:`Emoji`.
+
+        Parameters
+        ------------
+        message : :class:`Message`
+            The message.
+        emoji : :class:`Emoji` or str
+            The emoji to remove.
+        member : :class:`Member`
+            The member for which to delete the reaction.
+
+        Raises
+        --------
+        HTTPException
+            Removing the reaction failed.
+        Forbidden
+            You do not have the proper permissions to remove the reaction.
+        NotFound
+            The message or emoji you specified was not found.
+        InvalidArgument
+            The message or emoji parameter is invalid.
+        """
+        if not isinstance(message, Message):
+            raise InvalidArgument('message argument must be a Message')
+        if not isinstance(emoji, (str, Emoji)):
+            raise InvalidArgument('emoji must be a string or Emoji')
+
+        if isinstance(emoji, Emoji):
+            emoji = '{}:{}'.format(emoji.name, emoji.id)
+
+        if member == self.user:
+            member_id = '@me'
+        else:
+            member_id = member.id
+
+        yield from self.http.remove_reaction(message.id, message.channel.id, emoji, member_id)
+
+    @asyncio.coroutine
+    def get_reaction_users(self, reaction, limit=100, after=None):
+        """|coro|
+
+        Get the users that added a reaction to a message.
+
+        Parameters
+        ------------
+        reaction : :class:`Reaction`
+            The reaction to retrieve users for.
+        limit : int
+            The maximum number of results to return.
+        after : :class:`Member` or :class:`Object`
+            For pagination, reactions are sorted by member.
+
+        Raises
+        --------
+        HTTPException
+            Getting the users for the reaction failed.
+        NotFound
+            The message or emoji you specified was not found.
+        InvalidArgument
+            The reaction parameter is invalid.
+        """
+        if not isinstance(reaction, Reaction):
+            raise InvalidArgument('reaction must be a Reaction')
+
+        emoji = reaction.emoji
+
+        if isinstance(emoji, Emoji):
+            emoji = '{}:{}'.format(emoji.name, emoji.id)
+
+        if after:
+            after = after.id
+
+        data = yield from self.http.get_reaction_users(
+            reaction.message.id, reaction.message.channel.id,
+            emoji, limit, after=after)
+
+        return [User(**user) for user in data]
+
+    @asyncio.coroutine
+    def clear_reactions(self, message):
+        """|coro|
+
+        Removes all the reactions from a given message.
+
+        You need Manage Messages permission to use this.
+
+        Parameters
+        -----------
+        message: :class:`Message`
+            The message to remove all reactions from.
+
+        Raises
+        --------
+        HTTPException
+            Removing the reactions failed.
+        Forbidden
+            You do not have the proper permissions to remove all the reactions.
+        """
+        yield from self.http.clear_reactions(message.id, message.channel.id)
+
+    @asyncio.coroutine
+    def send_message(self, destination, content=None, *, tts=False, embed=None):
         """|coro|
 
         Sends a message to the destination given with the content given.
@@ -797,15 +1084,23 @@ class Client:
             ``str`` being allowed was removed and replaced with :class:`Object`.
 
         The content must be a type that can convert to a string through ``str(content)``.
+        If the content is set to ``None`` (the default), then the ``embed`` parameter must
+        be provided.
+
+        If the ``embed`` parameter is provided, it must be of type :class:`Embed` and
+        it must be a rich embed type.
 
         Parameters
         ------------
         destination
             The location to send the message.
         content
-            The content of the message to send.
+            The content of the message to send. If this is missing,
+            then the ``embed`` parameter must be present.
         tts : bool
             Indicates if the message should be sent using text-to-speech.
+        embed: :class:`Embed`
+            The rich embed for the content.
 
         Raises
         --------
@@ -818,31 +1113,45 @@ class Client:
         InvalidArgument
             The destination parameter is invalid.
 
+        Examples
+        ----------
+
+        Sending a regular message:
+
+        .. code-block:: python
+
+            await client.send_message(message.channel, 'Hello')
+
+        Sending a TTS message:
+
+        .. code-block:: python
+
+            await client.send_message(message.channel, 'Goodbye.', tts=True)
+
+        Sending an embed message:
+
+        .. code-block:: python
+
+            em = discord.Embed(title='My Embed Title', description='My Embed Content.', colour=0xDEADBF)
+            em.set_author(name='Someone', icon_url=client.user.default_avatar_url)
+            await client.send_message(message.channel, embed=em)
+
         Returns
         ---------
         :class:`Message`
             The message that was sent.
         """
 
-        channel_id = yield from self._resolve_destination(destination)
+        channel_id, guild_id = yield from self._resolve_destination(destination)
 
-        content = str(content)
+        content = str(content) if content else None
 
-        url = '{base}/{id}/messages'.format(base=endpoints.CHANNELS, id=channel_id)
-        payload = {
-            'content': content,
-            'nonce': random_integer(-2**63, 2**63 - 1)
-        }
+        if embed is not None:
+            embed = embed.to_dict()
 
-        if tts:
-            payload['tts'] = True
-
-        resp = yield from self._rate_limit_helper('send_message', 'POST', url, utils.to_json(payload))
-        yield from utils._verify_successful_response(resp)
-        data = yield from resp.json()
-        log.debug(request_success_log.format(response=resp, json=payload, data=data))
+        data = yield from self.http.send_message(channel_id, content, guild_id=guild_id, tts=tts, embed=embed)
         channel = self.get_channel(data.get('channel_id'))
-        message = Message(channel=channel, **data)
+        message = self.connection._create_message(channel=channel, **data)
         return message
 
     @asyncio.coroutine
@@ -861,14 +1170,8 @@ class Client:
             The location to send the typing update.
         """
 
-        channel_id = yield from self._resolve_destination(destination)
-
-        url = '{base}/{id}/typing'.format(base=endpoints.CHANNELS, id=channel_id)
-
-        response = yield from self.session.post(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        channel_id, guild_id = yield from self._resolve_destination(destination)
+        yield from self.http.send_typing(channel_id)
 
     @asyncio.coroutine
     def send_file(self, destination, fp, *, filename=None, content=None, tts=False):
@@ -917,36 +1220,20 @@ class Client:
             The message sent.
         """
 
-        channel_id = yield from self._resolve_destination(destination)
-
-        url = '{base}/{id}/messages'.format(base=endpoints.CHANNELS, id=channel_id)
-        form = aiohttp.FormData()
-
-        if content is not None:
-            form.add_field('content', str(content))
-
-        form.add_field('tts', 'true' if tts else 'false')
-
-        # we don't want the content-type json in this request
-        headers = self.headers.copy()
-        headers.pop('content-type', None)
+        channel_id, guild_id = yield from self._resolve_destination(destination)
 
         try:
-            # attempt to open the file and send the request
             with open(fp, 'rb') as f:
-                form.add_field('file', f, filename=filename, content_type='application/octet-stream')
-                response = yield from self.session.post(url, data=form, headers=headers)
+                buffer = io.BytesIO(f.read())
+                if filename is None:
+                    _, filename = path_split(fp)
         except TypeError:
-            form.add_field('file', fp, filename=filename, content_type='application/octet-stream')
-            response = yield from self.session.post(url, data=form, headers=headers)
+            buffer = fp
 
-        log.debug(request_logging_format.format(method='POST', response=response))
-        yield from utils._verify_successful_response(response)
-        data = yield from response.json()
-        msg = 'POST {0.url} returned {0.status} with {1} response'
-        log.debug(msg.format(response, data))
+        data = yield from self.http.send_file(channel_id, buffer, guild_id=guild_id,
+                                              filename=filename, content=content, tts=tts)
         channel = self.get_channel(data.get('channel_id'))
-        message = Message(channel=channel, **data)
+        message = self.connection._create_message(channel=channel, **data)
         return message
 
     @asyncio.coroutine
@@ -970,20 +1257,161 @@ class Client:
         HTTPException
             Deleting the message failed.
         """
-
-        url = '{}/{}/messages/{}'.format(endpoints.CHANNELS, message.channel.id, message.id)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        channel = message.channel
+        guild_id = channel.server.id if not getattr(channel, 'is_private', True) else None
+        yield from self.http.delete_message(channel.id, message.id, guild_id)
 
     @asyncio.coroutine
-    def edit_message(self, message, new_content):
+    def delete_messages(self, messages):
+        """|coro|
+
+        Deletes a list of messages. This is similar to :func:`delete_message`
+        except it bulk deletes multiple messages.
+
+        The channel to check where the message is deleted from is handled via
+        the first element of the iterable's ``.channel.id`` attributes. If the
+        channel is not consistent throughout the entire sequence, then an
+        :exc:`HTTPException` will be raised.
+
+        Usable only by bot accounts.
+
+        Parameters
+        -----------
+        messages : iterable of :class:`Message`
+            An iterable of messages denoting which ones to bulk delete.
+
+        Raises
+        ------
+        ClientException
+            The number of messages to delete is less than 2 or more than 100.
+        Forbidden
+            You do not have proper permissions to delete the messages or
+            you're not using a bot account.
+        HTTPException
+            Deleting the messages failed.
+        """
+
+        messages = list(messages)
+        if len(messages) > 100 or len(messages) < 2:
+            raise ClientException('Can only delete messages in the range of [2, 100]')
+
+        channel = messages[0].channel
+        message_ids = [m.id for m in messages]
+        guild_id = channel.server.id if not getattr(channel, 'is_private', True) else None
+        yield from self.http.delete_messages(channel.id, message_ids, guild_id)
+
+    @asyncio.coroutine
+    def purge_from(self, channel, *, limit=100, check=None, before=None, after=None, around=None):
+        """|coro|
+
+        Purges a list of messages that meet the criteria given by the predicate
+        ``check``. If a ``check`` is not provided then all messages are deleted
+        without discrimination.
+
+        You must have Manage Messages permission to delete messages even if they
+        are your own. The Read Message History permission is also needed to
+        retrieve message history.
+
+        Usable only by bot accounts.
+
+        Parameters
+        -----------
+        channel : :class:`Channel`
+            The channel to purge from.
+        limit : int
+            The number of messages to search through. This is not the number
+            of messages that will be deleted, though it can be.
+        check : predicate
+            The function used to check if a message should be deleted.
+            It must take a :class:`Message` as its sole parameter.
+        before : :class:`Message` or `datetime`
+            The message or date before which all deleted messages must be.
+            If a date is provided it must be a timezone-naive datetime representing UTC time.
+        after : :class:`Message` or `datetime`
+            The message or date after which all deleted messages must be.
+            If a date is provided it must be a timezone-naive datetime representing UTC time.
+        around : :class:`Message` or `datetime`
+            The message or date around which all deleted messages must be.
+            If a date is provided it must be a timezone-naive datetime representing UTC time.
+
+        Raises
+        -------
+        Forbidden
+            You do not have proper permissions to do the actions required or
+            you're not using a bot account.
+        HTTPException
+            Purging the messages failed.
+
+        Examples
+        ---------
+
+        Deleting bot's messages ::
+
+            def is_me(m):
+                return m.author == client.user
+
+            deleted = await client.purge_from(channel, limit=100, check=is_me)
+            await client.send_message(channel, 'Deleted {} message(s)'.format(len(deleted)))
+
+        Returns
+        --------
+        list
+            The list of messages that were deleted.
+        """
+
+        if check is None:
+            check = lambda m: True
+
+        if isinstance(before, datetime.datetime):
+            before = Object(utils.time_snowflake(before, high=False))
+        if isinstance(after, datetime.datetime):
+            after = Object(utils.time_snowflake(after, high=True))
+        if isinstance(around, datetime.datetime):
+            around = Object(utils.time_snowflake(around, high=True))
+
+        iterator = LogsFromIterator(self, channel, limit, before=before, after=after, around=around)
+        ret = []
+        count = 0
+
+        while True:
+            try:
+                msg = yield from iterator.iterate()
+            except asyncio.QueueEmpty:
+                # no more messages to poll
+                if count >= 2:
+                    # more than 2 messages -> bulk delete
+                    to_delete = ret[-count:]
+                    yield from self.delete_messages(to_delete)
+                elif count == 1:
+                    # delete a single message
+                    yield from self.delete_message(ret[-1])
+
+                return ret
+            else:
+                if count == 100:
+                    # we've reached a full 'queue'
+                    to_delete = ret[-100:]
+                    yield from self.delete_messages(to_delete)
+                    count = 0
+                    yield from asyncio.sleep(1)
+
+                if check(msg):
+                    count += 1
+                    ret.append(msg)
+
+    @asyncio.coroutine
+    def edit_message(self, message, new_content=None, *, embed=None):
         """|coro|
 
         Edits a :class:`Message` with the new message content.
 
         The new_content must be able to be transformed into a string via ``str(new_content)``.
+
+        If the ``new_content`` is not provided, then ``embed`` must be provided, which must
+        be of type :class:`Embed`.
+
+        The :class:`Message` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
 
         Parameters
         -----------
@@ -991,6 +1419,8 @@ class Client:
             The message to edit.
         new_content
             The new content to replace the message with.
+        embed: :class:`Embed`
+            The new embed to replace the original embed with.
 
         Raises
         -------
@@ -1004,36 +1434,135 @@ class Client:
         """
 
         channel = message.channel
-        content = str(new_content)
-
-        url = '{}/{}/messages/{}'.format(endpoints.CHANNELS, channel.id, message.id)
-        payload = {
-            'content': content
-        }
-
-        response = yield from self._rate_limit_helper('edit_message', 'PATCH', url, utils.to_json(payload))
-        log.debug(request_logging_format.format(method='PATCH', response=response))
-        yield from utils._verify_successful_response(response)
-        data = yield from response.json()
-        log.debug(request_success_log.format(response=response, json=payload, data=data))
-        return Message(channel=channel, **data)
+        content = str(new_content) if new_content else None
+        embed = embed.to_dict() if embed else None
+        guild_id = channel.server.id if not getattr(channel, 'is_private', True) else None
+        data = yield from self.http.edit_message(message.id, channel.id, content, guild_id=guild_id, embed=embed)
+        return self.connection._create_message(channel=channel, **data)
 
     @asyncio.coroutine
-    def _logs_from(self, channel, limit=100, before=None, after=None):
+    def get_message(self, channel, id):
+        """|coro|
+
+        Retrieves a single :class:`Message` from a :class:`Channel`.
+
+        This can only be used by bot accounts.
+
+        Parameters
+        ------------
+        channel: :class:`Channel` or :class:`PrivateChannel`
+            The text channel to retrieve the message from.
+        id: str
+            The message ID to look for.
+
+        Returns
+        --------
+        :class:`Message`
+            The message asked for.
+
+        Raises
+        --------
+        NotFound
+            The specified channel or message was not found.
+        Forbidden
+            You do not have the permissions required to get a message.
+        HTTPException
+            Retrieving the message failed.
+        """
+
+        data = yield from self.http.get_message(channel.id, id)
+        return self.connection._create_message(channel=channel, **data)
+
+    @asyncio.coroutine
+    def pin_message(self, message):
+        """|coro|
+
+        Pins a message. You must have Manage Messages permissions
+        to do this in a non-private channel context.
+
+        Parameters
+        -----------
+        message: :class:`Message`
+            The message to pin.
+
+        Raises
+        -------
+        Forbidden
+            You do not have permissions to pin the message.
+        NotFound
+            The message or channel was not found.
+        HTTPException
+            Pinning the message failed, probably due to the channel
+            having more than 50 pinned messages.
+        """
+        yield from self.http.pin_message(message.channel.id, message.id)
+
+    @asyncio.coroutine
+    def unpin_message(self, message):
+        """|coro|
+
+        Unpins a message. You must have Manage Messages permissions
+        to do this in a non-private channel context.
+
+        Parameters
+        -----------
+        message: :class:`Message`
+            The message to unpin.
+
+        Raises
+        -------
+        Forbidden
+            You do not have permissions to unpin the message.
+        NotFound
+            The message or channel was not found.
+        HTTPException
+            Unpinning the message failed.
+        """
+        yield from self.http.unpin_message(message.channel.id, message.id)
+
+    @asyncio.coroutine
+    def pins_from(self, channel):
+        """|coro|
+
+        Returns a list of :class:`Message` that are currently pinned for
+        the specified :class:`Channel` or :class:`PrivateChannel`.
+
+        Parameters
+        -----------
+        channel: :class:`Channel` or :class:`PrivateChannel`
+            The channel to look through pins for.
+
+        Raises
+        -------
+        NotFound
+            The channel was not found.
+        HTTPException
+            Retrieving the pinned messages failed.
+        """
+
+        data = yield from self.http.pins_from(channel.id)
+        return [self.connection._create_message(channel=channel, **m) for m in data]
+
+    def _logs_from(self, channel, limit=100, before=None, after=None, around=None):
         """|coro|
 
         This coroutine returns a generator that obtains logs from a specified channel.
 
         Parameters
         -----------
-        channel : :class:`Channel`
+        channel : :class:`Channel` or :class:`PrivateChannel`
             The channel to obtain the logs from.
         limit : int
             The number of messages to retrieve.
-        before : :class:`Message`
-            The message before which all returned messages must be.
-        after : :class:`Message`
-            The message after which all returned messages must be.
+        before : :class:`Message` or `datetime`
+            The message or date before which all returned messages must be.
+            If a date is provided it must be a timezone-naive datetime representing UTC time.
+        after : :class:`Message` or `datetime`
+            The message or date after which all returned messages must be.
+            If a date is provided it must be a timezone-naive datetime representing UTC time.
+        around : :class:`Message` or `datetime`
+            The message or date around which all returned messages must be.
+            If a date is provided it must be a timezone-naive datetime representing UTC time.
 
         Raises
         ------
@@ -1067,31 +1596,33 @@ class Client:
                 if message.author == client.user:
                     counter += 1
         """
-        url = '{}/{}/messages'.format(endpoints.CHANNELS, channel.id)
-        params = {
-            'limit': limit
-        }
+        before = getattr(before, 'id', None)
+        after  = getattr(after, 'id', None)
+        around  = getattr(around, 'id', None)
 
-        if before:
-            params['before'] = before.id
-        if after:
-            params['after'] = after.id
-
-        response = yield from self.session.get(url, params=params, headers=self.headers)
-        log.debug(request_logging_format.format(method='GET', response=response))
-        yield from utils._verify_successful_response(response)
-        messages = yield from response.json()
-        return messages
+        return self.http.logs_from(channel.id, limit, before=before, after=after, around=around)
 
     if PY35:
-        def logs_from(self, channel, limit=100, *, before=None, after=None):
-            return LogsFromIterator(self, channel, limit, before, after)
+        def logs_from(self, channel, limit=100, *, before=None, after=None, around=None, reverse=False):
+            if isinstance(before, datetime.datetime):
+                before = Object(utils.time_snowflake(before, high=False))
+            if isinstance(after, datetime.datetime):
+                after = Object(utils.time_snowflake(after, high=True))
+            if isinstance(around, datetime.datetime):
+                around = Object(utils.time_snowflake(around))
+
+            return LogsFromIterator(self, channel, limit, before=before, after=after, around=around, reverse=reverse)
     else:
         @asyncio.coroutine
         def logs_from(self, channel, limit=100, *, before=None, after=None):
+            if isinstance(before, datetime.datetime):
+                before = Object(utils.time_snowflake(before, high=False))
+            if isinstance(after, datetime.datetime):
+                after = Object(utils.time_snowflake(after, high=True))
+
             def generator(data):
                 for message in data:
-                    yield Message(channel=channel, **message)
+                    yield self.connection._create_message(channel=channel, **message)
 
             result = []
             while limit > 0:
@@ -1171,12 +1702,7 @@ class Client:
         HTTPException
             Kicking failed.
         """
-
-        url = '{0}/{1.server.id}/members/{1.id}'.format(endpoints.SERVERS, member)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.kick(member.id, member.server.id)
 
     @asyncio.coroutine
     def ban(self, member, delete_message_days=1):
@@ -1205,16 +1731,7 @@ class Client:
         HTTPException
             Banning failed.
         """
-
-        params = {
-            'delete-message-days': delete_message_days
-        }
-
-        url = '{0}/{1.server.id}/bans/{1.id}'.format(endpoints.SERVERS, member)
-        response = yield from self.session.put(url, params=params, headers=self.headers)
-        log.debug(request_logging_format.format(method='PUT', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.ban(member.id, member.server.id, delete_message_days)
 
     @asyncio.coroutine
     def unban(self, server, user):
@@ -1236,15 +1753,10 @@ class Client:
         HTTPException
             Unbanning failed.
         """
-
-        url = '{0}/{1.id}/bans/{2.id}'.format(endpoints.SERVERS, server, user)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.unban(user.id, server.id)
 
     @asyncio.coroutine
-    def server_voice_state(self, member, *, mute=False, deafen=False):
+    def server_voice_state(self, member, *, mute=None, deafen=None):
         """|coro|
 
         Server mutes or deafens a specific :class:`Member`.
@@ -1259,9 +1771,9 @@ class Client:
         -----------
         member : :class:`Member`
             The member to unban from their server.
-        mute : bool
+        mute: Optional[bool]
             Indicates if the member should be server muted or un-muted.
-        deafen : bool
+        deafen: Optional[bool]
             Indicates if the member should be server deafened or un-deafened.
 
         Raises
@@ -1271,17 +1783,7 @@ class Client:
         HTTPException
             The operation failed.
         """
-
-        url = '{0}/{1.server.id}/members/{1.id}'.format(endpoints.SERVERS, member)
-        payload = {
-            'mute': mute,
-            'deaf': deafen
-        }
-
-        response = yield from self.session.patch(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.server_voice_state(member.id, member.server.id, mute=mute, deafen=deafen)
 
     @asyncio.coroutine
     def edit_profile(self, password=None, **fields):
@@ -1292,7 +1794,8 @@ class Client:
         If a bot account is used then the password field is optional,
         otherwise it is required.
 
-        The profile is **not** edited in place.
+        The :attr:`Client.user` object is not modified directly afterwards until the
+        corresponding WebSocket event is received.
 
         Note
         -----
@@ -1342,35 +1845,29 @@ class Client:
         if not_bot_account and password is None:
             raise ClientException('Password is required for non-bot accounts.')
 
-        payload = {
+        args = {
             'password': password,
             'username': fields.get('username', self.user.name),
             'avatar': avatar
         }
 
         if not_bot_account:
-            payload['email'] = fields.get('email', self.email)
+            args['email'] = fields.get('email', self.email)
 
             if 'new_password' in fields:
-                payload['new_password'] = fields['new_password']
+                args['new_password'] = fields['new_password']
 
-
-        r = yield from self.session.patch(endpoints.ME, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=r))
-        yield from utils._verify_successful_response(r)
-
-        data = yield from r.json()
-        log.debug(request_success_log.format(response=r, json=payload, data=data))
-
+        data = yield from self.http.edit_profile(**args)
         if not_bot_account:
-            self.token = data['token']
             self.email = data['email']
-            self.headers['authorization'] = self.token
+            if 'token' in data:
+                self.http._token(data['token'], bot=False)
 
             if self.cache_auth:
                 self._update_cache(self.email, password)
 
     @asyncio.coroutine
+    @utils.deprecated('change_presence')
     def change_status(self, game=None, idle=False):
         """|coro|
 
@@ -1382,7 +1879,8 @@ class Client:
         The idle parameter is a boolean parameter that indicates whether the
         client should go idle or not.
 
-        .. _game_list: https://gist.github.com/Rapptz/a82b82381b70a60c281b
+        .. deprecated:: v0.13.0
+            Use :meth:`change_presence` instead.
 
         Parameters
         ----------
@@ -1397,6 +1895,42 @@ class Client:
             If the ``game`` parameter is not :class:`Game` or None.
         """
         yield from self.ws.change_presence(game=game, idle=idle)
+
+    @asyncio.coroutine
+    def change_presence(self, *, game=None, status=None, afk=False):
+        """|coro|
+
+        Changes the client's presence.
+
+        The game parameter is a Game object (not a string) that represents
+        a game being played currently.
+
+        Parameters
+        ----------
+        game: Optional[:class:`Game`]
+            The game being played. None if no game is being played.
+        status: Optional[:class:`Status`]
+            Indicates what status to change to. If None, then
+            :attr:`Status.online` is used.
+        afk: bool
+            Indicates if you are going AFK. This allows the discord
+            client to know how to handle push notifications better
+            for you in case you are actually idle and not lying.
+
+        Raises
+        ------
+        InvalidArgument
+            If the ``game`` parameter is not :class:`Game` or None.
+        """
+
+        if status is None:
+            status = 'online'
+        elif status is Status.offline:
+            status = 'invisible'
+        else:
+            status = str(status)
+
+        yield from self.ws.change_presence(game=game, status=status, afk=afk)
 
     @asyncio.coroutine
     def change_nickname(self, member, nickname):
@@ -1420,27 +1954,15 @@ class Client:
         Forbidden
             You do not have permissions to change the nickname.
         HTTPException
-            Editing the channel failed.
+            Changing the nickname failed.
         """
 
+        nickname = nickname if nickname else ''
+
         if member == self.user:
-            fmt = '{0}/{1.server.id}/members/@me/nick'
+            yield from self.http.change_my_nickname(member.server.id, nickname)
         else:
-            fmt = '{0}/{1.server.id}/members/{1.id}'
-
-        url = fmt.format(endpoints.SERVERS, member)
-
-        payload = {
-            # oddly enough, this endpoint requires '' to clear the nickname
-            # instead of the more consistent 'null', this might change in the
-            # future, or not.
-            'nick': nickname if nickname else ''
-        }
-
-        r = yield from self.session.patch(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=r))
-        yield from utils._verify_successful_response(r)
-        yield from r.release()
+            yield from self.http.change_nickname(member.server.id, member.id, nickname)
 
     # Channel management
 
@@ -1452,7 +1974,10 @@ class Client:
 
         You must have the proper permissions to edit the channel.
 
-        The channel is **not** edited in-place.
+        To move the channel's position use :meth:`move_channel` instead.
+
+        The :class:`Channel` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
 
         Parameters
         ----------
@@ -1460,10 +1985,12 @@ class Client:
             The channel to update.
         name : str
             The new channel name.
-        position : int
-            The new channel's position in the GUI.
         topic : str
             The new channel's topic.
+        bitrate : int
+            The new channel's bitrate. Voice only.
+        user_limit : int
+            The new channel's user limit. Voice only.
 
         Raises
         ------
@@ -1473,27 +2000,109 @@ class Client:
             Editing the channel failed.
         """
 
-        url = '{0}/{1.id}'.format(endpoints.CHANNELS, channel)
-        payload = {
-            'name': options.get('name', channel.name),
-            'topic': options.get('topic', channel.topic),
-            'position': options.get('position', channel.position)
-        }
+        keys = ('name', 'topic', 'position')
+        for key in keys:
+            if key not in options:
+                options[key] = getattr(channel, key)
 
-        r = yield from self.session.patch(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=r))
-        yield from utils._verify_successful_response(r)
-
-        data = yield from r.json()
-        log.debug(request_success_log.format(response=r, json=payload, data=data))
+        yield from self.http.edit_channel(channel.id, **options)
 
     @asyncio.coroutine
-    def create_channel(self, server, name, type=None):
+    def move_channel(self, channel, position):
+        """|coro|
+
+        Moves the specified :class:`Channel` to the given position in the GUI.
+        Note that voice channels and text channels have different position values.
+
+        The :class:`Channel` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
+
+        .. warning::
+
+            :class:`Object` instances do not work with this function.
+
+        Parameters
+        -----------
+        channel : :class:`Channel`
+            The channel to change positions of.
+        position : int
+            The position to insert the channel to.
+
+        Raises
+        -------
+        InvalidArgument
+            If position is less than 0 or greater than the number of channels.
+        Forbidden
+            You do not have permissions to change channel order.
+        HTTPException
+            If moving the channel failed, or you are of too low rank to move the channel.
+        """
+
+        if position < 0:
+            raise InvalidArgument('Channel position cannot be less than 0.')
+
+        url = '{0}/{1.server.id}/channels'.format(self.http.GUILDS, channel)
+        channels = [c for c in channel.server.channels if c.type is channel.type]
+
+        if position >= len(channels):
+            raise InvalidArgument('Channel position cannot be greater than {}'.format(len(channels) - 1))
+
+        channels.sort(key=lambda c: c.position)
+
+        try:
+            # remove ourselves from the channel list
+            channels.remove(channel)
+        except ValueError:
+            # not there somehow lol
+            return
+        else:
+            # add ourselves at our designated position
+            channels.insert(position, channel)
+
+        payload = [{'id': c.id, 'position': index } for index, c in enumerate(channels)]
+        yield from self.http.patch(url, json=payload, bucket='move_channel')
+
+    @asyncio.coroutine
+    def create_channel(self, server, name, *overwrites, type=None):
         """|coro|
 
         Creates a :class:`Channel` in the specified :class:`Server`.
 
         Note that you need the proper permissions to create the channel.
+
+        The ``overwrites`` argument list can be used to create a 'secret'
+        channel upon creation. A namedtuple of :class:`ChannelPermissions`
+        is exposed to create a channel-specific permission overwrite in a more
+        self-documenting matter. You can also use a regular tuple of ``(target, overwrite)``
+        where the ``overwrite`` expected has to be of type :class:`PermissionOverwrite`.
+
+        Examples
+        ----------
+
+        Creating a voice channel:
+
+        .. code-block:: python
+
+            await client.create_channel(server, 'Voice', type=discord.ChannelType.voice)
+
+        Creating a 'secret' text channel:
+
+        .. code-block:: python
+
+            everyone_perms = discord.PermissionOverwrite(read_messages=False)
+            my_perms = discord.PermissionOverwrite(read_messages=True)
+
+            everyone = discord.ChannelPermissions(target=server.default_role, overwrite=everyone_perms)
+            mine = discord.ChannelPermissions(target=server.me, overwrite=my_perms)
+            await client.create_channel(server, 'secret', everyone, mine)
+
+        Or in a more 'compact' way:
+
+        .. code-block:: python
+
+            everyone = discord.PermissionOverwrite(read_messages=False)
+            mine = discord.PermissionOverwrite(read_messages=True)
+            await client.create_channel(server, 'secret', (server.default_role, everyone), (server.me, mine))
 
         Parameters
         -----------
@@ -1503,6 +2112,9 @@ class Client:
             The channel's name.
         type : :class:`ChannelType`
             The type of channel to create. Defaults to :attr:`ChannelType.text`.
+        overwrites:
+            An argument list of channel specific overwrites to apply on the channel on
+            creation. Useful for creating 'secret' channels.
 
         Raises
         -------
@@ -1512,6 +2124,8 @@ class Client:
             The server specified was not found.
         HTTPException
             Creating the channel failed.
+        InvalidArgument
+            The permission overwrite array is not in proper form.
 
         Returns
         -------
@@ -1523,18 +2137,30 @@ class Client:
         if type is None:
             type = ChannelType.text
 
-        payload = {
-            'name': name,
-            'type': str(type)
-        }
+        perms = []
+        for overwrite in overwrites:
+            target = overwrite[0]
+            perm = overwrite[1]
+            if not isinstance(perm, PermissionOverwrite):
+                raise InvalidArgument('Expected PermissionOverwrite received {0.__name__}'.format(type(perm)))
 
-        url = '{0}/{1.id}/channels'.format(endpoints.SERVERS, server)
-        response = yield from self.session.post(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=response))
-        yield from utils._verify_successful_response(response)
+            allow, deny = perm.pair()
+            payload = {
+                'allow': allow.value,
+                'deny': deny.value,
+                'id': target.id
+            }
 
-        data = yield from response.json()
-        log.debug(request_success_log.format(response=response, data=data, json=payload))
+            if isinstance(target, User):
+                payload['type'] = 'member'
+            elif isinstance(target, Role):
+                payload['type'] = 'role'
+            else:
+                raise InvalidArgument('Expected Role, User, or Member target, received {0.__name__}'.format(type(target)))
+
+            perms.append(payload)
+
+        data = yield from self.http.create_channel(server.id, name, str(type), permission_overwrites=perms)
         channel = Channel(server=server, **data)
         return channel
 
@@ -1561,12 +2187,7 @@ class Client:
         HTTPException
             Deleting the channel failed.
         """
-
-        url = '{}/{}'.format(endpoints.CHANNELS, channel.id)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.delete_channel(channel.id)
 
     # Server management
 
@@ -1591,12 +2212,7 @@ class Client:
         HTTPException
             If leaving the server failed.
         """
-
-        url = '{}/@me/guilds/{.id}'.format(endpoints.USERS, server)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.leave_server(server.id)
 
     @asyncio.coroutine
     def delete_server(self, server):
@@ -1618,11 +2234,7 @@ class Client:
             You do not have permissions to delete the server.
         """
 
-        url = '{0}/{1.id}'.format(endpoints.SERVERS, server)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.delete_server(server.id)
 
     @asyncio.coroutine
     def create_server(self, name, region=None, icon=None):
@@ -1662,17 +2274,7 @@ class Client:
         else:
             region = region.name
 
-        payload = {
-            'icon': icon,
-            'name': name,
-            'region': region
-        }
-
-        r = yield from self.session.post(endpoints.SERVERS, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=r))
-        yield from utils._verify_successful_response(r)
-        data = yield from r.json()
-        log.debug(request_success_log.format(response=r, json=payload, data=data))
+        data = yield from self.http.create_server(name, region, icon)
         return Server(**data)
 
     @asyncio.coroutine
@@ -1683,7 +2285,8 @@ class Client:
 
         You must have the proper permissions to edit the server.
 
-        The server is **not** edited in-place.
+        The :class:`Server` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
 
         Parameters
         ----------
@@ -1703,6 +2306,8 @@ class Client:
         owner : :class:`Member`
             The new owner of the server to transfer ownership to. Note that you must
             be owner of the server to do this.
+        verification_level: :class:`VerificationLevel`
+            The new verification level for the server.
 
         Raises
         -------
@@ -1728,30 +2333,25 @@ class Client:
             else:
                 icon = None
 
-        payload = {
-            'region': str(fields.get('region', server.region)),
-            'afk_timeout': fields.get('afk_timeout', server.afk_timeout),
-            'icon': icon,
-            'name': fields.get('name', server.name),
-        }
-
-        afk_channel = fields.get('afk_channel')
-        if afk_channel is None:
-            afk_channel = server.afk_channel
-
-        payload['afk_channel'] = getattr(afk_channel, 'id', None)
+        fields['icon'] = icon
+        if 'afk_channel' in fields:
+            fields['afk_channel_id'] = fields['afk_channel'].id
 
         if 'owner' in fields:
             if server.owner != server.me:
                 raise InvalidArgument('To transfer ownership you must be the owner of the server.')
 
-            payload['owner_id'] = fields['owner'].id
+            fields['owner_id'] = fields['owner'].id
 
-        url = '{0}/{1.id}'.format(endpoints.SERVERS, server)
-        r = yield from self.session.patch(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=r))
-        yield from utils._verify_successful_response(r)
-        yield from r.release()
+        if 'region' in fields:
+            fields['region'] = str(fields['region'])
+
+        level = fields.get('verification_level', server.verification_level)
+        if not isinstance(level, VerificationLevel):
+            raise InvalidArgument('verification_level field must of type VerificationLevel')
+
+        fields['verification_level'] = level.value
+        yield from self.http.edit_server(server.id, **fields)
 
     @asyncio.coroutine
     def get_bans(self, server):
@@ -1780,12 +2380,172 @@ class Client:
             A list of :class:`User` that have been banned.
         """
 
-        url = '{0}/{1.id}/bans'.format(endpoints.SERVERS, server)
-        resp = yield from self.session.get(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='GET', response=resp))
-        yield from utils._verify_successful_response(resp)
-        data = yield from resp.json()
+        data = yield from self.http.get_bans(server.id)
         return [User(**user['user']) for user in data]
+
+    @asyncio.coroutine
+    def prune_members(self, server, *, days):
+        """|coro|
+
+        Prunes a :class:`Server` from its inactive members.
+
+        The inactive members are denoted if they have not logged on in
+        ``days`` number of days and they have no roles.
+
+        You must have the "Kick Members" permission to use this.
+
+        To check how many members you would prune without actually pruning,
+        see the :meth:`estimate_pruned_members` function.
+
+        Parameters
+        -----------
+        server: :class:`Server`
+            The server to prune from.
+        days: int
+            The number of days before counting as inactive.
+
+        Raises
+        -------
+        Forbidden
+            You do not have permissions to prune members.
+        HTTPException
+            An error occurred while pruning members.
+        InvalidArgument
+            An integer was not passed for ``days``.
+
+        Returns
+        ---------
+        int
+            The number of members pruned.
+        """
+
+        if not isinstance(days, int):
+            raise InvalidArgument('Expected int for ``days``, received {0.__class__.__name__} instead.'.format(days))
+
+        data = yield from self.http.prune_members(server.id, days)
+        return data['pruned']
+
+    @asyncio.coroutine
+    def estimate_pruned_members(self, server, *, days):
+        """|coro|
+
+        Similar to :meth:`prune_members` except instead of actually
+        pruning members, it returns how many members it would prune
+        from the server had it been called.
+
+        Parameters
+        -----------
+        server: :class:`Server`
+            The server to estimate a prune from.
+        days: int
+            The number of days before counting as inactive.
+
+        Raises
+        -------
+        Forbidden
+            You do not have permissions to prune members.
+        HTTPException
+            An error occurred while fetching the prune members estimate.
+        InvalidArgument
+            An integer was not passed for ``days``.
+
+        Returns
+        ---------
+        int
+            The number of members estimated to be pruned.
+        """
+
+        if not isinstance(days, int):
+            raise InvalidArgument('Expected int for ``days``, received {0.__class__.__name__} instead.'.format(days))
+
+        data = yield from self.http.estimate_pruned_members(server.id, days)
+        return data['pruned']
+
+    @asyncio.coroutine
+    def create_custom_emoji(self, server, *, name, image):
+        """|coro|
+
+        Creates a custom :class:`Emoji` for a :class:`Server`.
+
+        This endpoint is only allowed for user bots or white listed
+        bots. If this is done by a user bot then this is a local
+        emoji that can only be used inside that server.
+
+        There is currently a limit of 50 local emotes per server.
+
+        Parameters
+        -----------
+        server: :class:`Server`
+            The server to add the emoji to.
+        name: str
+            The emoji name. Must be at least 2 characters.
+        image: bytes
+            The *bytes-like* object representing the image data to use.
+            Only JPG and PNG images are supported.
+
+        Returns
+        --------
+        :class:`Emoji`
+            The created emoji.
+
+        Raises
+        -------
+        Forbidden
+            You are not allowed to create emojis.
+        HTTPException
+            An error occurred creating an emoji.
+        """
+
+        img = utils._bytes_to_base64_data(image)
+        data = yield from self.http.create_custom_emoji(server.id, name, img)
+        return Emoji(server=server, **data)
+
+    @asyncio.coroutine
+    def delete_custom_emoji(self, emoji):
+        """|coro|
+
+        Deletes a custom :class:`Emoji` from a :class:`Server`.
+
+        This follows the same rules as :meth:`create_custom_emoji`.
+
+        Parameters
+        -----------
+        emoji: :class:`Emoji`
+            The emoji to delete.
+
+        Raises
+        -------
+        Forbidden
+            You are not allowed to delete emojis.
+        HTTPException
+            An error occurred deleting the emoji.
+        """
+
+        yield from self.http.delete_custom_emoji(emoji.server.id, emoji.id)
+
+    @asyncio.coroutine
+    def edit_custom_emoji(self, emoji, *, name):
+        """|coro|
+
+        Edits a :class:`Emoji`.
+
+        Parameters
+        -----------
+        emoji: :class:`Emoji`
+            The emoji to edit.
+        name: str
+            The new emoji name.
+
+        Raises
+        -------
+        Forbidden
+            You are not allowed to edit emojis.
+        HTTPException
+            An error occurred editing the emoji.
+        """
+
+        yield from self.http.edit_custom_emoji(emoji.server.id, emoji.id, name=name)
+
 
     # Invite management
 
@@ -1836,20 +2596,7 @@ class Client:
             The invite that was created.
         """
 
-        payload = {
-            'max_age': options.get('max_age', 0),
-            'max_uses': options.get('max_uses', 0),
-            'temporary': options.get('temporary', False),
-            'xkcdpass': options.get('xkcd', False)
-        }
-
-        url = '{0}/{1.id}/invites'.format(endpoints.CHANNELS, destination)
-        response = yield from self.session.post(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=response))
-
-        yield from utils._verify_successful_response(response)
-        data = yield from response.json()
-        log.debug(request_success_log.format(json=payload, response=response, data=data))
+        data = yield from self.http.create_invite(destination.id, **options)
         self._fill_invite_data(data)
         return Invite(**data)
 
@@ -1883,12 +2630,8 @@ class Client:
             The invite from the URL/ID.
         """
 
-        destination = self._resolve_invite(url)
-        rurl = '{0}/invite/{1}'.format(endpoints.API_BASE, destination)
-        response = yield from self.session.get(rurl, headers=self.headers)
-        log.debug(request_logging_format.format(method='GET', response=response))
-        yield from utils._verify_successful_response(response)
-        data = yield from response.json()
+        invite_id = self._resolve_invite(url)
+        data = yield from self.http.get_invite(invite_id)
         self._fill_invite_data(data)
         return Invite(**data)
 
@@ -1918,11 +2661,7 @@ class Client:
             The list of invites that are currently active.
         """
 
-        url = '{0}/{1.id}/invites'.format(endpoints.SERVERS, server)
-        resp = yield from self.session.get(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='GET', response=resp))
-        yield from utils._verify_successful_response(resp)
-        data = yield from resp.json()
+        data = yield from self.http.invites_from(server.id)
         result = []
         for invite in data:
             channel = server.get_channel(invite['channel']['id'])
@@ -1952,14 +2691,12 @@ class Client:
             Accepting the invite failed.
         NotFound
             The invite is invalid or expired.
+        Forbidden
+            You are a bot user and cannot use this endpoint.
         """
 
-        destination = self._resolve_invite(invite)
-        url = '{0}/invite/{1}'.format(endpoints.API_BASE, destination)
-        response = yield from self.session.post(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        invite_id = self._resolve_invite(invite)
+        yield from self.http.accept_invite(invite_id)
 
     @asyncio.coroutine
     def delete_invite(self, invite):
@@ -1985,14 +2722,61 @@ class Client:
             Revoking the invite failed.
         """
 
-        destination = self._resolve_invite(invite)
-        url = '{0}/invite/{1}'.format(endpoints.API_BASE, destination)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        invite_id = self._resolve_invite(invite)
+        yield from self.http.delete_invite(invite_id)
 
     # Role management
+
+    @asyncio.coroutine
+    def move_role(self, server, role, position):
+        """|coro|
+
+        Moves the specified :class:`Role` to the given position in the :class:`Server`.
+
+        The :class:`Role` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
+
+        Parameters
+        -----------
+        server : :class:`Server`
+            The server the role belongs to.
+        role : :class:`Role`
+            The role to edit.
+        position : int
+            The position to insert the role to.
+
+        Raises
+        -------
+        InvalidArgument
+            If position is 0, or role is server.default_role
+        Forbidden
+            You do not have permissions to change role order.
+        HTTPException
+            If moving the role failed, or you are of too low rank to move the role.
+        """
+
+        if position == 0:
+            raise InvalidArgument("Cannot move role to position 0")
+
+        if role == server.default_role:
+            raise InvalidArgument("Cannot move default role")
+
+        if role.position == position:
+            return  # Save discord the extra request.
+
+        url = '{0}/{1.id}/roles'.format(self.http.GUILDS, server)
+
+        change_range = range(min(role.position, position), max(role.position, position) + 1)
+
+        roles = [r.id for r in sorted(filter(lambda x: (x.position in change_range) and x != role, server.roles), key=lambda x: x.position)]
+
+        if role.position > position:
+            roles.insert(0, role.id)
+        else:
+            roles.append(role.id)
+
+        payload = [{"id": z[0], "position": z[1]} for z in zip(roles, change_range)]
+        yield from self.http.patch(url, json=payload, bucket='move_role')
 
     @asyncio.coroutine
     def edit_role(self, server, role, **fields):
@@ -2000,19 +2784,14 @@ class Client:
 
         Edits the specified :class:`Role` for the entire :class:`Server`.
 
-        This does **not** edit the role in place.
+        The :class:`Role` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
 
-        All fields except ``server`` and ``role`` are optional.
+        All fields except ``server`` and ``role`` are optional. To change
+        the position of a role, use :func:`move_role` instead.
 
         .. versionchanged:: 0.8.0
             Editing now uses keyword arguments instead of editing the :class:`Role` object directly.
-
-        Note
-        -----
-        At the moment, the Discord API allows you to set the colour to any
-        RGB value. This might change in the future so it is recommended that
-        you use the constants in the :class:`Colour` instead such as
-        :meth:`Colour.green`.
 
         Parameters
         -----------
@@ -2028,6 +2807,8 @@ class Client:
             The new colour to change to. (aliased to color as well)
         hoist : bool
             Indicates if the role should be shown separately in the online list.
+        mentionable : bool
+            Indicates if the role should be mentionable by others.
 
         Raises
         -------
@@ -2037,32 +2818,25 @@ class Client:
             Editing the role failed.
         """
 
-        url = '{0}/{1.id}/roles/{2.id}'.format(endpoints.SERVERS, server, role)
-        color = fields.get('color')
-        if color is None:
-            color = fields.get('colour', role.colour)
+        colour = fields.get('colour')
+        if colour is None:
+            colour = fields.get('color', role.colour)
 
         payload = {
             'name': fields.get('name', role.name),
             'permissions': fields.get('permissions', role.permissions).value,
-            'color': color.value,
-            'hoist': fields.get('hoist', role.hoist)
+            'color': colour.value,
+            'hoist': fields.get('hoist', role.hoist),
+            'mentionable': fields.get('mentionable', role.mentionable)
         }
 
-        r = yield from self.session.patch(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=r))
-        yield from utils._verify_successful_response(r)
-
-        data = yield from r.json()
-        log.debug(request_success_log.format(json=payload, response=r, data=data))
+        yield from self.http.edit_role(server.id, role.id, **payload)
 
     @asyncio.coroutine
     def delete_role(self, server, role):
         """|coro|
 
         Deletes the specified :class:`Role` for the entire :class:`Server`.
-
-        Works in a similar matter to :func:`edit_role`.
 
         Parameters
         -----------
@@ -2079,24 +2853,11 @@ class Client:
             Deleting the role failed.
         """
 
-        url = '{0}/{1.id}/roles/{2.id}'.format(endpoints.SERVERS, server, role)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.delete_role(server.id, role.id)
 
     @asyncio.coroutine
     def _replace_roles(self, member, roles):
-        url = '{0}/{1.server.id}/members/{1.id}'.format(endpoints.SERVERS, member)
-
-        payload = {
-            'roles': roles
-        }
-
-        r = yield from self.session.patch(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=r))
-        yield from utils._verify_successful_response(r)
-        yield from r.release()
+        yield from self.http.replace_roles(member.id, member.server.id, roles)
 
     @asyncio.coroutine
     def add_roles(self, member, *roles):
@@ -2106,8 +2867,8 @@ class Client:
 
         You must have the proper permissions to use this function.
 
-        This method **appends** a role to a member but does **not** do it
-        in-place.
+        The :class:`Member` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
 
         Parameters
         -----------
@@ -2135,7 +2896,8 @@ class Client:
 
         You must have the proper permissions to use this function.
 
-        This method does **not** do edit the member in-place.
+        The :class:`Member` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
 
         Parameters
         -----------
@@ -2152,16 +2914,11 @@ class Client:
             Removing roles failed.
         """
         new_roles = [x.id for x in member.roles]
-        remove = []
         for role in roles:
             try:
-                index = new_roles.index(role.id)
-                remove.append(index)
+                new_roles.remove(role.id)
             except ValueError:
-                continue
-
-        for index in reversed(remove):
-            del new_roles[index]
+                pass
 
         yield from self._replace_roles(member, new_roles)
 
@@ -2178,7 +2935,8 @@ class Client:
         call is ``client.replace_roles(member, d, e, c)`` then
         the member has the roles ``[d, e, c]``.
 
-        This method does **not** do edit the member in-place.
+        The :class:`Member` object is not directly modified afterwards until the
+        corresponding WebSocket event is received.
 
         Parameters
         -----------
@@ -2214,14 +2972,8 @@ class Client:
             is stored in cache.
         """
 
-        url = '{0}/{1.id}/roles'.format(endpoints.SERVERS, server)
-        r = yield from self.session.post(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='POST', response=r))
-        yield from utils._verify_successful_response(r)
-
-        data = yield from r.json()
-        everyone = server.id == data.get('id')
-        role = Role(everyone=everyone, **data)
+        data = yield from self.http.create_role(server.id)
+        role = Role(server=server, **data)
 
         # we have to call edit because you can't pass a payload to the
         # http request currently.
@@ -2229,7 +2981,7 @@ class Client:
         return role
 
     @asyncio.coroutine
-    def edit_channel_permissions(self, channel, target, *, allow=None, deny=None):
+    def edit_channel_permissions(self, channel, target, overwrite=None):
         """|coro|
 
         Sets the channel specific permission overwrites for a target in the
@@ -2245,11 +2997,10 @@ class Client:
 
         Setting allow and deny: ::
 
-            allow = discord.Permissions.none()
-            deny = discord.Permissions.none()
-            allow.mention_everyone = True
-            deny.manage_messages = True
-            yield from client.edit_channel_permissions(message.channel, message.author, allow=allow, deny=deny)
+            overwrite = discord.PermissionOverwrite()
+            overwrite.read_messages = True
+            overwrite.ban_members = False
+            yield from client.edit_channel_permissions(message.channel, message.author, overwrite)
 
         Parameters
         -----------
@@ -2257,10 +3008,8 @@ class Client:
             The channel to give the specific permissions for.
         target
             The :class:`Member` or :class:`Role` to overwrite permissions for.
-        allow : :class:`Permissions`
-            The permissions to explicitly allow. (optional)
-        deny : :class:`Permissions`
-            The permissions to explicitly deny. (optional)
+        overwrite: :class:`PermissionOverwrite`
+            The permissions to allow and deny to the target.
 
         Raises
         -------
@@ -2271,38 +3020,26 @@ class Client:
         HTTPException
             Editing channel specific permissions failed.
         InvalidArgument
-            The allow or deny arguments were not of type :class:`Permissions`
+            The overwrite parameter was not of type :class:`PermissionOverwrite`
             or the target type was not :class:`Role` or :class:`Member`.
         """
 
-        url = '{0}/{1.id}/permissions/{2.id}'.format(endpoints.CHANNELS, channel, target)
+        overwrite = PermissionOverwrite() if overwrite is None else overwrite
 
-        allow = Permissions.none() if allow is None else allow
-        deny = Permissions.none() if deny is None else deny
 
-        if not (isinstance(allow, Permissions) and isinstance(deny, Permissions)):
-            raise InvalidArgument('allow and deny parameters must be discord.Permissions')
+        if not isinstance(overwrite, PermissionOverwrite):
+            raise InvalidArgument('allow and deny parameters must be PermissionOverwrite')
 
-        deny =  deny.value
-        allow = allow.value
-
-        payload = {
-            'id': target.id,
-            'allow': allow,
-            'deny': deny
-        }
+        allow, deny = overwrite.pair()
 
         if isinstance(target, Member):
-            payload['type'] = 'member'
+            perm_type = 'member'
         elif isinstance(target, Role):
-            payload['type'] = 'role'
+            perm_type = 'role'
         else:
-            raise InvalidArgument('target parameter must be either discord.Member or discord.Role')
+            raise InvalidArgument('target parameter must be either Member or Role')
 
-        r = yield from self.session.put(url, data=utils.to_json(payload), headers=self.headers)
-        log.debug(request_logging_format.format(method='PUT', response=r))
-        yield from utils._verify_successful_response(r)
-        yield from r.release()
+        yield from self.http.edit_channel_permissions(channel.id, target.id, allow.value, deny.value, perm_type)
 
     @asyncio.coroutine
     def delete_channel_permissions(self, channel, target):
@@ -2331,12 +3068,7 @@ class Client:
         HTTPException
             Deleting channel specific permissions failed.
         """
-
-        url = '{0}/{1.id}/permissions/{2.id}'.format(endpoints.CHANNELS, channel, target)
-        response = yield from self.session.delete(url, headers=self.headers)
-        log.debug(request_logging_format.format(method='DELETE', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.delete_channel_permissions(channel.id, target.id)
 
     # Voice management
 
@@ -2350,7 +3082,7 @@ class Client:
 
         Note
         -----
-        You cannot pass in a :class:`Object` in place of a :class:`Channel`
+        You cannot pass in a :class:`Object` instead of a :class:`Channel`
         object in this function.
 
         Parameters
@@ -2370,18 +3102,10 @@ class Client:
             You do not have permissions to move the member.
         """
 
-        url = '{0}/{1.server.id}/members/{1.id}'.format(endpoints.SERVERS, member)
-
         if getattr(channel, 'type', ChannelType.text) != ChannelType.voice:
             raise InvalidArgument('The channel provided must be a voice channel.')
 
-        payload = utils.to_json({
-            'channel_id': channel.id
-        })
-        response = yield from self.session.patch(url, data=payload, headers=self.headers)
-        log.debug(request_logging_format.format(method='PATCH', response=response))
-        yield from utils._verify_successful_response(response)
-        yield from response.release()
+        yield from self.http.move_member(member.id, member.server.id, channel.id)
 
     @asyncio.coroutine
     def join_voice_channel(self, channel):
@@ -2429,11 +3153,12 @@ class Client:
 
         def session_id_found(data):
             user_id = data.get('user_id')
-            return user_id == self.user.id
+            guild_id = data.get('guild_id')
+            return user_id == self.user.id and guild_id == server.id
 
         # register the futures for waiting
         session_id_future = self.ws.wait_for('VOICE_STATE_UPDATE', session_id_found)
-        voice_data_future = self.ws.wait_for('VOICE_SERVER_UPDATE', lambda d: True)
+        voice_data_future = self.ws.wait_for('VOICE_SERVER_UPDATE', lambda d: d.get('guild_id') == server.id)
 
         # request joining
         yield from self.ws.voice_state(server.id, channel.id)
@@ -2491,3 +3216,72 @@ class Client:
             The voice client associated with the server.
         """
         return self.connection._get_voice_client(server.id)
+
+    def group_call_in(self, channel):
+        """Returns the :class:`GroupCall` associated with a private channel.
+
+        If no group call is found then ``None`` is returned.
+
+        Parameters
+        -----------
+        channel: :class:`PrivateChannel`
+            The group private channel to query the group call for.
+
+        Returns
+        --------
+        Optional[:class:`GroupCall`]
+            The group call.
+        """
+        return self.connection._calls.get(channel.id)
+
+    # Miscellaneous stuff
+
+    @asyncio.coroutine
+    def application_info(self):
+        """|coro|
+
+        Retrieve's the bot's application information.
+
+        Returns
+        --------
+        :class:`AppInfo`
+            A namedtuple representing the application info.
+
+        Raises
+        -------
+        HTTPException
+            Retrieving the information failed somehow.
+        """
+        data = yield from self.http.application_info()
+        return AppInfo(id=data['id'], name=data['name'],
+                       description=data['description'], icon=data['icon'],
+                       owner=User(**data['owner']))
+
+    @asyncio.coroutine
+    def get_user_info(self, user_id):
+        """|coro|
+
+        Retrieves a :class:`User` based on their ID. This can only
+        be used by bot accounts. You do not have to share any servers
+        with the user to get this information, however many operations
+        do require that you do.
+
+        Parameters
+        -----------
+        user_id: str
+            The user's ID to fetch from.
+
+        Returns
+        --------
+        :class:`User`
+            The user you requested.
+
+        Raises
+        -------
+        NotFound
+            A user with this ID does not exist.
+        HTTPException
+            Fetching the user failed.
+        """
+        data = yield from self.http.get_user_info(user_id)
+        return User(**data)

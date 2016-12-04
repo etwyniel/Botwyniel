@@ -30,6 +30,7 @@ import datetime
 from base64 import b64encode
 import asyncio
 import json
+import warnings, functools
 
 DISCORD_EPOCH = 1420070400000
 
@@ -74,6 +75,21 @@ def parse_time(timestamp):
         return datetime.datetime(*map(int, re_split(r'[^\d]', timestamp.replace('+00:00', ''))))
     return None
 
+def deprecated(instead=None):
+    def actual_decorator(func):
+        @functools.wraps(func)
+        def decorated(*args, **kwargs):
+            warnings.simplefilter('always', DeprecationWarning) # turn off filter
+            if instead:
+                fmt = "{0.__name__} is deprecated, use {1} instead."
+            else:
+                fmt = '{0.__name__} is deprecated.'
+
+            warnings.warn(fmt.format(func, instead), stacklevel=3, category=DeprecationWarning)
+            warnings.simplefilter('default', DeprecationWarning) # reset filter
+            return func(*args, **kwargs)
+        return decorated
+    return actual_decorator
 
 def oauth_url(client_id, permissions=None, server=None, redirect_uri=None):
     """A helper function that returns the OAuth2 URL for inviting the bot
@@ -105,6 +121,24 @@ def oauth_url(client_id, permissions=None, server=None, redirect_uri=None):
 def snowflake_time(id):
     """Returns the creation date in UTC of a discord id."""
     return datetime.datetime.utcfromtimestamp(((int(id) >> 22) + DISCORD_EPOCH) / 1000)
+
+def time_snowflake(datetime_obj, high=False):
+    """Returns a numeric snowflake pretending to be created at the given date.
+
+    When using as the lower end of a range, use time_snowflake(high=False) - 1 to be inclusive, high=True to be exclusive
+    When using as the higher end of a range, use time_snowflake(high=True) + 1 to be inclusive, high=False to be exclusive
+
+    Parameters
+    -----------
+    datetime_obj
+        A timezone-naive datetime object representing UTC time.
+    high
+        Whether or not to set the lower 22 bit to high or low.
+    """
+    unix_seconds = (datetime_obj - type(datetime_obj)(1970, 1, 1)).total_seconds()
+    discord_millis = int(unix_seconds * 1000 - DISCORD_EPOCH)
+
+    return (discord_millis << 22) + (2**22-1 if high else 0)
 
 def find(predicate, seq):
     """A helper to return the first element found in the sequence
@@ -199,25 +233,6 @@ def _unique(iterable):
 
 def _null_event(*args, **kwargs):
     pass
-
-@asyncio.coroutine
-def _verify_successful_response(response):
-    code = response.status
-    success = code >= 200 and code < 300
-    if not success:
-        message = None
-        text = None
-        if response.headers['content-type'] == 'application/json':
-            data = yield from response.json()
-            message = data.get('message')
-        else:
-            text = yield from response.text()
-
-        if code == 403:
-            raise Forbidden(response, message, text)
-        elif code == 404:
-            raise NotFound(response, message, text)
-        raise HTTPException(response, message, text)
 
 def _get_mime_type_for_image(data):
     if data.startswith(b'\x89\x50\x4E\x47\x0D\x0A\x1A\x0A'):

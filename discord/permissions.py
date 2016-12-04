@@ -127,7 +127,7 @@ class Permissions:
     def all(cls):
         """A factory method that creates a :class:`Permissions` with all
         permissions set to True."""
-        return cls(0b00001111111100111111110000111111)
+        return cls(0b01111111111101111111110001111111)
 
     @classmethod
     def all_channel(cls):
@@ -138,27 +138,50 @@ class Permissions:
         - manager_server
         - kick_members
         - ban_members
+        - administrator
+        - change_nicknames
+        - manage_nicknames
         """
-        return cls(0b00000011111100111111110000011001)
+        return cls(0b00110011111101111111110001010001)
 
     @classmethod
     def general(cls):
         """A factory method that creates a :class:`Permissions` with all
-        "General" permissions set to True."""
-        return cls(0b00001100000000000000000000111111)
+        "General" permissions from the official Discord UI set to True."""
+        return cls(0b01111100000000000000000000111111)
 
     @classmethod
     def text(cls):
         """A factory method that creates a :class:`Permissions` with all
-        "Text" permissions set to True."""
-        return cls(0b00000000000000111111110000000000)
+        "Text" permissions from the official Discord UI set to True."""
+        return cls(0b00000000000001111111110001000000)
 
     @classmethod
     def voice(cls):
         """A factory method that creates a :class:`Permissions` with all
-        "Voice" permissions set to True."""
+        "Voice" permissions from the official Discord UI set to True."""
         return cls(0b00000011111100000000000000000000)
 
+    def update(self, **kwargs):
+        """Bulk updates this permission object.
+
+        Allows you to set multiple attributes by using keyword
+        arguments. The names must be equivalent to the properties
+        listed. Extraneous key/value pairs will be silently ignored.
+
+        Parameters
+        ------------
+        \*\*kwargs
+            A list of key/value pairs to bulk update permissions with.
+        """
+        for key, value in kwargs.items():
+            try:
+                is_property = isinstance(getattr(self.__class__, key), property)
+            except AttributeError:
+                continue
+
+            if is_property:
+                setattr(self, key, value)
 
     def _bit(self, index):
         return bool((self.value >> index) & 1)
@@ -214,14 +237,15 @@ class Permissions:
         self._set(2, value)
 
     @property
-    def manage_roles(self):
-        """Returns True if a user can manage server roles. This role overrides all other permissions.
+    def administrator(self):
+        """Returns True if a user is an administrator. This role overrides all other permissions.
 
-        This also corresponds to the "manage permissions" channel-specific override."""
+        This also bypasses all channel-specific overrides.
+        """
         return self._bit(3)
 
-    @manage_roles.setter
-    def manage_roles(self, value):
+    @administrator.setter
+    def administrator(self, value):
         self._set(3, value)
 
     @property
@@ -243,6 +267,15 @@ class Permissions:
     @manage_server.setter
     def manage_server(self, value):
         self._set(5, value)
+
+    @property
+    def add_reactions(self):
+        """Returns True if a user can add reactions to messages."""
+        return self._bit(6)
+
+    @add_reactions.setter
+    def add_reactions(self, value):
+        self._set(6, value)
 
     # 4 unused
 
@@ -318,7 +351,16 @@ class Permissions:
     def mention_everyone(self, value):
         self._set(17, value)
 
-    # 2 unused
+    @property
+    def external_emojis(self):
+        """Returns True if a user can use emojis from other servers."""
+        return self._bit(18)
+
+    @external_emojis.setter
+    def external_emojis(self, value):
+        self._set(18, value)
+
+    # 1 unused
 
     @property
     def connect(self):
@@ -375,12 +417,12 @@ class Permissions:
         self._set(25, value)
 
     @property
-    def change_nicknames(self):
+    def change_nickname(self):
         """Returns True if a user can change their nickname in the server."""
         return self._bit(26)
 
-    @change_nicknames.setter
-    def change_nicknames(self, value):
+    @change_nickname.setter
+    def change_nickname(self, value):
         self._set(26, value)
 
     @property
@@ -392,4 +434,155 @@ class Permissions:
     def manage_nicknames(self, value):
         self._set(27, value)
 
-    # 4 unused
+    @property
+    def manage_roles(self):
+        """Returns True if a user can create or edit roles less than their role's position.
+
+        This also corresponds to the "manage permissions" channel-specific override.
+        """
+        return self._bit(28)
+
+    @manage_roles.setter
+    def manage_roles(self, value):
+        self._set(28, value)
+
+    @property
+    def manage_webhooks(self):
+        """Returns True if a user can create, edit, or delete webhooks."""
+        return self._bit(29)
+
+    @manage_webhooks.setter
+    def manage_webhooks(self, value):
+        self._set(29, value)
+
+    @property
+    def manage_emojis(self):
+        """Returns True if a user can create, edit, or delete emojis."""
+        return self._bit(30)
+
+    @manage_emojis.setter
+    def manage_emojis(self, value):
+        self._set(30, value)
+
+    # 1 unused
+
+    # after these 32 bits, there's 21 more unused ones technically
+
+def augment_from_permissions(cls):
+    cls.VALID_NAMES = { name for name in dir(Permissions) if isinstance(getattr(Permissions, name), property) }
+
+    # make descriptors for all the valid names
+    for name in cls.VALID_NAMES:
+        # god bless Python
+        def getter(self, x=name):
+            return self._values.get(x)
+        def setter(self, value, x=name):
+            self._set(x, value)
+
+        prop = property(getter, setter)
+        setattr(cls, name, prop)
+
+    return cls
+
+@augment_from_permissions
+class PermissionOverwrite:
+    """A type that is used to represent a channel specific permission.
+
+    Unlike a regular :class:`Permissions`\, the default value of a
+    permission is equivalent to ``None`` and not ``False``. Setting
+    a value to ``False`` is **explicitly** denying that permission,
+    while setting a value to ``True`` is **explicitly** allowing
+    that permission.
+
+    The values supported by this are the same as :class:`Permissions`
+    with the added possibility of it being set to ``None``.
+
+    Supported operations:
+
+    +-----------+------------------------------------------+
+    | Operation |               Description                |
+    +===========+==========================================+
+    | iter(x)   | Returns an iterator of (perm, value)     |
+    |           | pairs. This allows this class to be used |
+    |           | as an iterable in e.g. set/list/dict     |
+    |           | constructions.                           |
+    +-----------+------------------------------------------+
+
+    Parameters
+    -----------
+    \*\*kwargs
+        Set the value of permissions by their name.
+    """
+
+    def __init__(self, **kwargs):
+        self._values = {}
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def _set(self, key, value):
+        if value not in (True, None, False):
+            raise TypeError('Expected bool or NoneType, received {0.__class__.__name__}'.format(value))
+
+        self._values[key] = value
+
+    def pair(self):
+        """Returns the (allow, deny) pair from this overwrite.
+
+        The value of these pairs is :class:`Permissions`.
+        """
+
+        allow = Permissions.none()
+        deny  = Permissions.none()
+
+        for key, value in self._values.items():
+            if value is True:
+                setattr(allow, key, True)
+            elif value is False:
+                setattr(deny, key, True)
+
+        return allow, deny
+
+    @classmethod
+    def from_pair(cls, allow, deny):
+        """Creates an overwrite from an allow/deny pair of :class:`Permissions`."""
+        ret = cls()
+        for key, value in allow:
+            if value is True:
+                setattr(ret, key, True)
+
+        for key, value in deny:
+            if value is True:
+                setattr(ret, key, False)
+
+        return ret
+
+    def is_empty(self):
+        """Checks if the permission overwrite is currently empty.
+
+        An empty permission overwrite is one that has no overwrites set
+        to True or False.
+        """
+        return all(x is None for x in self._values.values())
+
+    def update(self, **kwargs):
+        """Bulk updates this permission overwrite object.
+
+        Allows you to set multiple attributes by using keyword
+        arguments. The names must be equivalent to the properties
+        listed. Extraneous key/value pairs will be silently ignored.
+
+        Parameters
+        ------------
+        \*\*kwargs
+            A list of key/value pairs to bulk update with.
+        """
+        for key, value in kwargs.items():
+            if key not in self.VALID_NAMES:
+                continue
+
+            setattr(self, key, value)
+
+    def __iter__(self):
+        for key in self.VALID_NAMES:
+            yield key, self._values.get(key)
