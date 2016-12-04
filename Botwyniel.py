@@ -160,7 +160,7 @@ class Bot(discord.Client):
         for voice in self.voice:
             if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
                 voice.player.stop()
-                    
+
     async def queue_song(self, message):
         await self.send_typing(message.channel)
         for voice in self.voice:
@@ -216,7 +216,7 @@ class Bot(discord.Client):
     async def leave_voice(self, message):
         for v in range(len(self.voice)):
             if self.voice[v].server.id == message.id:
-		self.voice[v].player.stop()
+                self.voice[v].player.stop()
                 await self.voice.pop(v).disconnect()
 
     def list_servers(self):
