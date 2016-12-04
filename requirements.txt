@@ -1,6 +1,6 @@
 requests==2.8.1
 ws4py==0.3.4
-youtube-dl
+youtube-dl=2016.12.1
 cffi==1.6.0
 pymysql
 git+https://github.com/Rapptz/discord.py
