@@ -663,7 +663,7 @@ os.system('cat vendor.zip* > /tmp/vendor.zip')
 #os.system('mv vendor.zip /tmp')
 os.chdir('/tmp')
 os.system('unzip vendor.zip')
-os.system('mv -r vendor/* /app/.heroku/vendor/')
+os.system('mv vendor/* /app/.heroku/vendor/')
 os.chdir('/app/.heroku')
     
 botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
