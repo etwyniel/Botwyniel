@@ -214,10 +214,10 @@ class Bot(discord.Client):
         await self.send_message(message.channel, 'Channel not found.')
         
     async def leave_voice(self, message):
-        for v in self.voice:
-            if v.server.id == message.id:
-                self.voice.remove(v)
-                await v.disconnect()
+        for v in range(len(self.voice)):
+            if self.voice[v].server.id == message.id:
+		self.voice[v].player.stop()
+                await self.voice.pop(v).disconnect()
 
     def list_servers(self):
         print("\nLogged in to {} servers.".format(len(self.servers)))
