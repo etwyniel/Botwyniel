@@ -659,7 +659,7 @@ os.chdir('botwyniel-ffmpeg-buildpack/bin')
 os.system('./compile /tmp/build_dir')
 """
 os.chdir('/app/.heroku/')
-os.system('cat vendor.zip* > /tmp/vendor.zip
+os.system('cat vendor.zip* > /tmp/vendor.zip')
 #os.system('mv vendor.zip /tmp')
 os.chdir('/tmp')
 os.system('unzip vendor.zip')
