@@ -162,7 +162,7 @@ class Bot(discord.Client):
         for voice in self.voice:
             if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
                 voice.player.stop()
-                    
+
     async def queue_song(self, message):
         await self.send_typing(message.channel)
         for voice in self.voice:
@@ -208,7 +208,10 @@ class Bot(discord.Client):
         channel = self.truncate(message.content).lower()
         for c in list(message.server.channels):
             if c.name.lower() == channel and str(c.type) == "voice":
-                await self.leave_voice(message)
+                for v in self.voice:
+                    if v.server.id == message.server.id:
+                        await v.move_to(c)
+                        return
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
                 self.voice[-1].queue = []
@@ -216,10 +219,13 @@ class Bot(discord.Client):
         await self.send_message(message.channel, 'Channel not found.')
         
     async def leave_voice(self, message):
-        for v in self.voice:
-            if v.server.id == message.id:
-                self.voice.remove(v)
-                await v.disconnect()
+        for v in range(len(self.voice)):
+            if self.voice[v].server.id == message.server.id:
+                try:
+                    self.voice[v].player.stop()
+                except:
+                    pass
+                await self.voice.pop(v).disconnect()
 
     def list_servers(self):
         print("\nLogged in to {} servers.".format(len(self.servers)))

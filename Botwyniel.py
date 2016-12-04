@@ -208,7 +208,7 @@ class Bot(discord.Client):
             if c.name.lower() == channel and str(c.type) == "voice":
                 for v in self.voice:
                     if v.server.id == message.server.id:
-                        v.move_to(c)
+                        await v.move_to(c)
                         return
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
@@ -221,6 +221,8 @@ class Bot(discord.Client):
             if self.voice[v].server.id == message.server.id:
                 try:
                     self.voice[v].player.stop()
+                except:
+                    pass
                 await self.voice.pop(v).disconnect()
 
     def list_servers(self):
