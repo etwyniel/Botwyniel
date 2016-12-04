@@ -206,7 +206,10 @@ class Bot(discord.Client):
         channel = self.truncate(message.content).lower()
         for c in list(message.server.channels):
             if c.name.lower() == channel and str(c.type) == "voice":
-                await self.leave_voice(message)
+                for v in self.voice:
+                    if v.server.id == message.server.id:
+                        v.move_to(c)
+                        return
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
                 self.voice[-1].queue = []
@@ -215,8 +218,9 @@ class Bot(discord.Client):
         
     async def leave_voice(self, message):
         for v in range(len(self.voice)):
-            if self.voice[v].server.id == message.id:
-                self.voice[v].player.stop()
+            if self.voice[v].server.id == message.server.id:
+                try:
+                    self.voice[v].player.stop()
                 await self.voice.pop(v).disconnect()
 
     def list_servers(self):
