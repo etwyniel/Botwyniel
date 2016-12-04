@@ -8,6 +8,7 @@ import os
 from ctypes.util import find_library
 import requests
 import pymysql
+from youtube_dl import YoutubeDL
 
 import discord
 from RiotAPI import RiotAPI
@@ -31,6 +32,7 @@ class Bot(discord.Client):
         super().__init__()
         self.voice = []
         self.player = None
+        self.ydl = YoutubeDL()
         self.init_time = datetime.now()
         self.servs = {}
         self.channels = {}
@@ -61,7 +63,7 @@ class Bot(discord.Client):
                          "0!dice": self.dice,
                          "0!coin": self.coin,
                          "0!suggest": self.suggest,
-                         "0!play": self.play_song,
+                         "0!queu": self.queue_song,
                          "0!pause": self.pause,
                          "0!ytplay": None,
                          "0!setalias": self.set_alias,
@@ -133,8 +135,6 @@ class Bot(discord.Client):
             self.current = await self.songs.get()
             self.player = self.voice.create_ffmpeg_player(self.current.song, after=self.delete_file)
             self.player.start()"""
-        if message.content.startswith('0!play'):
-            await self.play_song(message)
         elif message.content.startswith('0!'):
             if message.content.split(' ')[0] in self.commands:
                 await self.log(str(message.author) + ": " + message.content)
@@ -152,22 +152,37 @@ class Bot(discord.Client):
                     voice.player.resume()
                 except:
                     self.send_message(message.channel, 'No song paused.')
-    
-    async def play_song(self, message):
+                    
+    async skip_song(self, message):
+        for voice in self.voice:
+            if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
+                voice.player.stop()
+                    
+    async def queue_song(self, message):
+        await self.send_typing(message.channel)
         for voice in self.voice:
             if voice.server.id == message.server.id:
-                if voice.player != None and voice.player.is_playing():
-                    await self.send_message(message.channel, 'Already playing.')
-                    return None
-                await self.send_typing(message.channel)
-                query = message.content[message.content.find(' ')+1:]
-                url = self.yt.search_video(query)
-
-                voice.player = await voice.create_ytdl_player(url)
-                voice.player.start()
-                await self.send_message(message.channel, 'Now playing `' + voice.player.title + '`')
+                url = self.yt.search_video(self.truncate(message.content))
+                info = self.ydl.extract_info(ulr, download=False)
+                if voice.player is not None and not voice.player.is_playing():
+                    await self.play_song(voice, url)
+                    await self.send_message(message.channel, "Now playing `{}`".format(info['title']))
+                else:
+                    voice.queue.append(url)
+                    await self.send_message(message.channel, mat(info['title']))
                 return
         await self.send_message(message.channel, 'No voice client on this server (use 0!joinvoice).')
+    
+    async def play_song(self, voice, url):
+        voice.player = await voice.create_ytdl_player(url)
+        voice.player.start()
+        await self.send_message(message.channel, 'Now playing `' + voice.player.title + '`')
+        while not voice.player.is_done():
+            await asyncio.sleep(1)
+        if voice.queue:
+            next = voice.queue.pop(0)
+            await self.play_song(next)
+        return
 	
     async def join_voice(self, message):
         channel = self.truncate(message.content).lower()
@@ -176,6 +191,7 @@ class Bot(discord.Client):
                 await self.leave_voice(message)
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
+                self.voice[-1].queue = []
                 return
         await self.send_message(message.channel, 'Channel not found.')
         
@@ -183,7 +199,7 @@ class Bot(discord.Client):
         for v in self.voice:
             if v.server.id == message.id:
                 self.voice.remove(v)
-                v.disconnect()
+                await v.disconnect()
 
     def list_servers(self):
         print("\nLogged in to {} servers.".format(len(self.servers)))
