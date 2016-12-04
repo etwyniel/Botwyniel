@@ -63,7 +63,7 @@ class Bot(discord.Client):
                          "0!dice": self.dice,
                          "0!coin": self.coin,
                          "0!suggest": self.suggest,
-                         "0!queu": self.queue_song,
+                         "0!queue": self.queue_song,
                          "0!pause": self.pause,
                          "0!ytplay": None,
                          "0!setalias": self.set_alias,
@@ -71,7 +71,8 @@ class Bot(discord.Client):
                          "0!about": self.about,
                          "0!joinvoice": self.join_voice, 
                          "0!resume": self.resume,
-                         "0!leavevoice": self.leave_voice
+                         "0!leavevoice": self.leave_voice,
+                         "0!skip": self.skip_song
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -120,6 +121,7 @@ class Bot(discord.Client):
             if str(c.type) != 'text' and c.name == 'Music':
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
+                self.voice[-1].queue = []
 
     async def on_message(self, message):
         """if message.content == '0!play':
@@ -135,7 +137,7 @@ class Bot(discord.Client):
             self.current = await self.songs.get()
             self.player = self.voice.create_ffmpeg_player(self.current.song, after=self.delete_file)
             self.player.start()"""
-        elif message.content.startswith('0!'):
+        if message.content.startswith('0!'):
             if message.content.split(' ')[0] in self.commands:
                 await self.log(str(message.author) + ": " + message.content)
                 await self.commands[message.content.split(" ")[0]](message)
@@ -153,7 +155,7 @@ class Bot(discord.Client):
                 except:
                     self.send_message(message.channel, 'No song paused.')
                     
-    async skip_song(self, message):
+    async def skip_song(self, message):
         for voice in self.voice:
             if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
                 voice.player.stop()
@@ -163,20 +165,20 @@ class Bot(discord.Client):
         for voice in self.voice:
             if voice.server.id == message.server.id:
                 url = self.yt.search_video(self.truncate(message.content))
-                info = self.ydl.extract_info(ulr, download=False)
-                if voice.player is not None and not voice.player.is_playing():
-                    await self.play_song(voice, url)
+                info = self.ydl.extract_info(url, download=False)
+                if voice.player is None or not voice.player.is_playing():
                     await self.send_message(message.channel, "Now playing `{}`".format(info['title']))
+                    await self.play_song(voice, url)
                 else:
                     voice.queue.append(url)
-                    await self.send_message(message.channel, mat(info['title']))
+                    await self.send_message(message.channel, "Queued `{}`".format(info['title']))
                 return
         await self.send_message(message.channel, 'No voice client on this server (use 0!joinvoice).')
     
     async def play_song(self, voice, url):
         voice.player = await voice.create_ytdl_player(url)
         voice.player.start()
-        await self.send_message(message.channel, 'Now playing `' + voice.player.title + '`')
+        #await self.send_message(message.channel, 'Now playing `' + voice.player.title + '`')
         while not voice.player.is_done():
             await asyncio.sleep(1)
         if voice.queue:

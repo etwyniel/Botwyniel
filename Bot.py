@@ -10,12 +10,12 @@ import os
 from ctypes.util import find_library
 import requests
 import pymysql
+from youtube_dl import YoutubeDL
 
 import discord
 from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
 from discord.client import ConnectionState
-from simpleHTMLparser import get_text
 
 
 class VoiceEntry:
@@ -32,7 +32,9 @@ class Bot(discord.Client):
     
     def __init__(self, name="Botwyniel", wl=[], **kwargs):
         super().__init__()
+        self.voice = []
         self.player = None
+        self.ydl = YoutubeDL()
         self.init_time = datetime.now()
         self.servs = {}
         self.channels = {}
@@ -63,12 +65,16 @@ class Bot(discord.Client):
                          "0!dice": self.dice,
                          "0!coin": self.coin,
                          "0!suggest": self.suggest,
-                         "0!play": self.play_song,
+                         "0!queue": self.queue_song,
                          "0!pause": self.pause,
                          "0!ytplay": None,
                          "0!setalias": self.set_alias,
                          "0!removealias": self.remove_alias,
-                         "0!about": self.about
+                         "0!about": self.about,
+                         "0!joinvoice": self.join_voice, 
+                         "0!resume": self.resume,
+                         "0!leavevoice": self.leave_voice,
+                         "0!skip": self.skip_song
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -109,14 +115,18 @@ class Bot(discord.Client):
         await self.log("Botwyniel initialized")
         chans = self.servs["Etwyniel's"].channels
         if not discord.opus.is_loaded():
-            discord.opus.load_opus('vendor/lib/libopus.so.0')
-            await self.log('Failed to load opus: ' str(e))
+            try:
+                discord.opus.load_opus('/app/.heroku/vendor/lib/libopus.so.0')
+            except Exception as e:
+                await self.log('Failed to load opus: ' + str(e))
         for c in chans:
             if str(c.type) != 'text' and c.name == 'Music':
-                self.voice = await self.join_voice_channel(c)
+                self.voice.append(await self.join_voice_channel(c))
+                self.voice[-1].player = None
+                self.voice[-1].queue = []
 
     async def on_message(self, message):
-        if message.content == '0!play':
+        """if message.content == '0!play':
             url = 'https://www.youtube.com/watch?v=B1O0R0t6zdI'
             subprocess.call('youtube-dl --metadata-from-title "%(artist)s - %(title)s"\
 --extract-audio --audio-format mp3 --add-metadata ' + url)
@@ -128,30 +138,72 @@ class Bot(discord.Client):
             await self.songs.put(VoiceEntry(message, filename))
             self.current = await self.songs.get()
             self.player = self.voice.create_ffmpeg_player(self.current.song, after=self.delete_file)
-            self.player.start()
-        if message.content.startswith('0!play'):
-            await self.play_song(message)
-        elif message.content.startswith('0!'):
+            self.player.start()"""
+        if message.content.startswith('0!'):
             if message.content.split(' ')[0] in self.commands:
                 await self.log(str(message.author) + ": " + message.content)
                 await self.commands[message.content.split(" ")[0]](message)
 
     async def pause(self, message):
-        if self.player != None and self.player.is_playing():
-            self.player.pause()
-        else:
-            pass
-
-    async def play_song(self, message):
-        if self.player != None and self.player.is_playing():
-            await self.send_message(message.channel, 'Already playing.')
-            return None
+        for voice in self.voice:
+            if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
+                voice.player.pause()
+                
+    async def resume(self, message):
+        for voice in self.voice:
+            if voice.server.id == message.server.id and voice.player != None and not voice.player.is_playing():
+                try:
+                    voice.player.resume()
+                except:
+                    self.send_message(message.channel, 'No song paused.')
+                    
+    async def skip_song(self, message):
+        for voice in self.voice:
+            if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
+                voice.player.stop()
+                    
+    async def queue_song(self, message):
         await self.send_typing(message.channel)
-        query = message.content[message.content.find(' ')+1:]
-        url = self.yt.search_video(query)
-        self.player = await self.voice.create_ytdl_player(url)
-        self.player.start()
-        await self.send_message(message.channel, 'Now playing `' + self.player.title + '`')
+        for voice in self.voice:
+            if voice.server.id == message.server.id:
+                url = self.yt.search_video(self.truncate(message.content))
+                info = self.ydl.extract_info(url, download=False)
+                if voice.player is None or not voice.player.is_playing():
+                    await self.send_message(message.channel, "Now playing `{}`".format(info['title']))
+                    await self.play_song(voice, url)
+                else:
+                    voice.queue.append(url)
+                    await self.send_message(message.channel, "Queued `{}`".format(info['title']))
+                return
+        await self.send_message(message.channel, 'No voice client on this server (use 0!joinvoice).')
+    
+    async def play_song(self, voice, url):
+        voice.player = await voice.create_ytdl_player(url)
+        voice.player.start()
+        #await self.send_message(message.channel, 'Now playing `' + voice.player.title + '`')
+        while not voice.player.is_done():
+            await asyncio.sleep(1)
+        if voice.queue:
+            next_song = voice.queue.pop(0)
+            await self.play_song(voice, next_song)
+        return
+	
+    async def join_voice(self, message):
+        channel = self.truncate(message.content).lower()
+        for c in list(message.server.channels):
+            if c.name.lower() == channel and str(c.type) == "voice":
+                await self.leave_voice(message)
+                self.voice.append(await self.join_voice_channel(c))
+                self.voice[-1].player = None
+                self.voice[-1].queue = []
+                return
+        await self.send_message(message.channel, 'Channel not found.')
+        
+    async def leave_voice(self, message):
+        for v in self.voice:
+            if v.server.id == message.id:
+                self.voice.remove(v)
+                await v.disconnect()
 
     def list_servers(self):
         print("\nLogged in to {} servers.".format(len(self.servers)))
@@ -256,13 +308,14 @@ class Bot(discord.Client):
         if region.upper() not in self.regions:
             await self.send_message(message.channel, 'Invalid region')
             return None
-        riot = RiotAPI(self.riot_key, region)
+        
         if username in ["me", '']:
             if message.author.id in self.aliases:
                 username, region = self.aliases[message.author.id]
             else:
                 username = message.author.name
         try:
+            riot = RiotAPI(self.riot_key, region)
             rank = riot.get_summoner_rank("".join(username.split(" ")))
 
             to_return = "The summoner {username} is ranked {tier} {division} and currently has {LP} LPs. (S6 winrate: {winrate}%)".format(
@@ -397,7 +450,12 @@ class Bot(discord.Client):
 
     async def sendpm(self, message):
         m = self.truncate(message.content)
-        await self.send_message(message.mentions[0], m)
+        receiver = message.mentions[0]
+        if not message.channel.is_private and receiver.nick != None:
+            m = m.replace("@" + receiver.nick + " ", "")
+        else:
+            m = m.replace("@" + receiver.name + " ", "")
+        await self.send_message(receiver, m)
 
     def kill(self, message):
         if self.author_is_admin(message):
@@ -462,12 +520,16 @@ class Bot(discord.Client):
             for char in self.truncate(message.content):
                 if char == '\n':
                     if command.startswith('await'):
-                        await eval(c.split('await ')[1])
+                        await eval(command.split('await ')[1])
                     else:
-                        exec(c)
+                        exec(command)
                     command = ""
                 else:
                     command += char
+            if command.startswith('await'):
+                await eval(command.split('await ')[1])
+            else:
+                exec(command)
         except Exception as e:
             await self.log(str(e))
             await self.send_message(message.channel, "Error occured: " + str(e))
@@ -493,7 +555,7 @@ class Bot(discord.Client):
             "**0!ytthumbnail** *query*\n"
             "**0!uptime**\n"
             "**0!send** *server*, *channel*, message\n"
-            "**0!sendpm** @*user*\n"
+            "**0!sendpm** @*user* *message*\n"
             "**0!fc**\n"
             "**0!love**\n"
             "**0!8ball** *question*\n"
@@ -510,7 +572,7 @@ class Bot(discord.Client):
             await self.send_message(message.author, "Unknown command.")
             
     async def about(self, message):
-        self.send_message(message.channel, ("I am a discord bot created by Etwyniel, using discord.py by Rapptz.\n"
+        await self.send_message(message.channel, ("I am a discord bot created by Etwyniel, using discord.py by Rapptz.\n"
             "I can find your League of Legends rank, or the ranks of the people you are playing with and against.\n"
             "I can also find videos on YouTube.\n\n"
             "I am currently used by {} servers.").format(str(len(self.servers))))
@@ -527,11 +589,11 @@ class Bot(discord.Client):
         id = message.author.id
         m = self.truncate(message.content)
         if ',' in m:
-            alias, region = m.split(',')
+            alias, region = m.split(', ')
         else:
             alias = m
             region = 'euw'
-        if len(alias > 32):
+        if len(alias) > 32:
             self.send_message(message.channel, "This alias is too long.")
         elif alias == "":
             self.send_message(message.channel, "Please enter your alias.")
@@ -541,22 +603,24 @@ class Bot(discord.Client):
         conn = self.db_connect()
         cursor = conn.cursor()
         if id in self.aliases:
-            query = "UPDATE aliases SET username = '{1}', region = '{2}' WHERE id = '{0}';"
+            query = "UPDATE aliases SET alias = '{1}', region = '{2}' WHERE id = '{0}';"
         else:
-            query = "INSERT INTO aliases (id, username, region) VALUES ('{0}', '{1}', '{2}');"
+            query = "INSERT INTO aliases (id, alias, region) VALUES ('{0}', '{1}', '{2}');"
         cursor.execute(query.format(id, alias, region))
+        conn.commit()
         conn.close()
         self.aliases[id] = [alias, region]
         await self.send_message(message.channel, "Alias {} successfully set!".format(alias))
         
-    async def remove_alias(self):
+    async def remove_alias(self, message):
         conn = self.db_connect()
         cursor = conn.cursor()
         id = message.author.id
-        cursor.execute("SELECT username FROM aliases WHERE id = '{}'".format(id))
+        cursor.execute("SELECT alias FROM aliases WHERE id = '{}'".format(id))
         alias = cursor.fetchone()[0]
-        query = "DELETE * FROM aliases WHERE id = '{}'"
+        query = "DELETE FROM aliases WHERE id = '{}'"
         cursor.execute(query.format(id))
+        conn.commit()
         conn.close()
         self.aliases.pop(id)
         await self.send_message(message.channel, "Alias {} successfully removed!".format(alias))
@@ -591,7 +655,7 @@ class Bot(discord.Client):
             field = patch_page[patch_page.rfind("<", 0, index):patch_page[index:].find(">") + index]
             latest_version = field[field.index("title=") + 7:field[field.index("title=") + 7:].index('"') + field.index("title=") + 7]
             
-	if current_version != latest_version:
+            if current_version != latest_version:
                 patch_url = "http://euw.leagueoflegends.com" + \
                     field[field.index("href=") + 6:field[field.index("href=") + 6:].index('"') + field.index("href=") + 6]
                 await self.send_message(channel, "New League of Legends update!\n" + patch_url)
@@ -599,15 +663,14 @@ class Bot(discord.Client):
                 conn.commit()
                 current_version = latest_version
             conn.close()
-            await asyncio.sleep(90)
+            await asyncio.sleep(900)
         
 
+if not discord.opus.is_loaded():
+    pass
+    #discord.opus.load_opus('libopus/build/lib/libopus.so.0.5.0')
+
 print('Installing packages')
-os.chdir('/tmp')
-os.mkdir('build_dir')
-os.system('git clone https://github.com/etwyniel/botwyniel-ffmpeg-buildpack')
-os.chdir('botwyniel-ffmpeg-buildpack/bin')
-os.system('./compile /tmp/build_dir')
 
 botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
 botwyniel.run(input("Token: "))
