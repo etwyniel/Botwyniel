@@ -658,7 +658,7 @@ os.system('git clone https://github.com/etwyniel/botwyniel-ffmpeg-buildpack')
 os.chdir('botwyniel-ffmpeg-buildpack/bin')
 os.system('./compile /tmp/build_dir')
 """
-os.chdir('/app/.heroku/')
+os.chdir('/app')
 os.system('cat vendor.zip* > /tmp/vendor.zip')
 #os.system('mv vendor.zip /tmp')
 os.chdir('/tmp')
