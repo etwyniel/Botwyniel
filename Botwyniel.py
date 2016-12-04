@@ -691,7 +691,7 @@ if not discord.opus.is_loaded():
     #discord.opus.load_opus('libopus/build/lib/libopus.so.0.5.0')
 
 print('Installing packages')
-"""
+
 os.chdir('/tmp')
 os.mkdir('build_dir')
 os.system('git clone https://github.com/etwyniel/botwyniel-ffmpeg-buildpack')
@@ -704,7 +704,6 @@ os.system('cat vendor.zip* > /tmp/vendor.zip')
 os.chdir('/tmp')
 os.system('unzip vendor.zip')
 os.system('cp -r vendor /app/.heroku')
-"""
 os.mkdir('/app/.heroku/vendor/bin')
 os.mkdir('/app/.heroku/include')
 os.system('mv vendor/bin/* /app/.heroku/vendor/bin')
