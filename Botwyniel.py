@@ -703,7 +703,7 @@ os.system('cat vendor.zip* > /tmp/vendor.zip')
 #os.system('mv vendor.zip /tmp')
 os.chdir('/tmp')
 os.system('unzip vendor.zip')
-os.system('cp vendor /app/.heroku')
+os.system('cp -r vendor /app/.heroku')
 """
 os.mkdir('/app/.heroku/vendor/bin')
 os.mkdir('/app/.heroku/include')
