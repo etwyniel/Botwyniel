@@ -63,7 +63,7 @@ class Bot(discord.Client):
                          "0!dice": self.dice,
                          "0!coin": self.coin,
                          "0!suggest": self.suggest,
-                         "0!queue": self.queue_song,
+                         "0!play": self.queue_song,
                          "0!pause": self.pause,
                          "0!ytplay": None,
                          "0!setalias": self.set_alias,
@@ -72,7 +72,8 @@ class Bot(discord.Client):
                          "0!joinvoice": self.join_voice, 
                          "0!resume": self.resume,
                          "0!leavevoice": self.leave_voice,
-                         "0!skip": self.skip_song
+                         "0!skip": self.skip_song,
+                         "0!queue": self.list_queue
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -170,10 +171,25 @@ class Bot(discord.Client):
                     await self.send_message(message.channel, "Now playing `{}`".format(info['title']))
                     await self.play_song(voice, url)
                 else:
-                    voice.queue.append(url)
+                    voice.queue.append((url, info['title']))
                     await self.send_message(message.channel, "Queued `{}`".format(info['title']))
                 return
         await self.send_message(message.channel, 'No voice client on this server (use 0!joinvoice).')
+        
+    async def list_queue(self, message):
+        await self.send_typing(message.channel)
+        for voice in self.voice:
+            if voice.server.id == message.server.id:
+                if voice.queue:
+                    out = "*Playlist:*"
+                    for i in range(len(voice.queue)):
+                        out += "\n" + str(i + 1) + ". `" + voice.queue[i][1] + "`"
+                    await self.send_message(message.channel, out)
+                else:
+                    await self.send_message(message.channel, "Nothing queued.")
+                return
+        await self.send_message(message.channel, "No voice client on this server.")
+            
     
     async def play_song(self, voice, url):
         voice.player = await voice.create_ytdl_player(url)
@@ -182,8 +198,8 @@ class Bot(discord.Client):
         while not voice.player.is_done():
             await asyncio.sleep(1)
         if voice.queue:
-            next = voice.queue.pop(0)
-            await self.play_song(next)
+            next_song = voice.queue.pop(0)[0]
+            await self.play_song(voice, next_song)
         return
 	
     async def join_voice(self, message):
@@ -551,6 +567,12 @@ class Bot(discord.Client):
             "**0!ytsearch** *query*\n"
             "**0!ytlatest** *channel name*\n"
             "**0!ytthumbnail** *query*\n"
+            "**0!joinvoice** *voice channel*\n"
+            "**0!leavevoice**\n"
+            "**0!play** *query*\n"
+            "**0!pause**\n"
+            "**0!resume**\n"
+            "**0!queue**\n"
             "**0!uptime**\n"
             "**0!send** *server*, *channel*, message\n"
             "**0!sendpm** @*user* *message*\n"
