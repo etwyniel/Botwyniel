@@ -391,10 +391,12 @@ class Bot(discord.Client):
                               )
             return None
         
-        to_send = "**Red team**:\n"
+        to_send = ""#"**Red team**:\n"
         for player in ranks:
             if ranks.index(player) == len(ranks)/2:
-                to_send += "\n**Blue team**:\n"
+                await self.send_message(message.channel, "", embed=discord.Embed(
+                    title="Red team", description=to_send, color=discord.Colour.dark_red()))
+                to_send = ""#"\n**Blue team**:\n"
             if player[2] == "unranked":
                 to_send += "{name} (**{champion}**): Unranked\n".format(
                     name=player[0],
@@ -407,7 +409,8 @@ class Bot(discord.Client):
                     tier=player[2].capitalize(),
                     division=player[3]
                 )
-        await self.send_message(message.channel, to_send)
+        await self.send_message(message.channel, "", embed=discord.Embed(
+            title="Blue team", description=to_send, color=discord.Colour.dark_blue()))
 
     async def latest_videos(self, message):
         username = self.truncate(message.content)
