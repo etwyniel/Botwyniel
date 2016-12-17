@@ -42,8 +42,8 @@ class Bot(discord.Client):
         self.play_next_song = asyncio.Event()
         self.name = name
         self.whitelist = wl
-        self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
-        self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
+        self.steam_key = os.environ["STEAM_KEY"]
+        self.riot_key = os.environ["RIOT_KEY"]
         self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "JP", "PBE"]
         self.commands = {"0!rank": self.rank,
                          "0!gameranks": self.gameranks,
@@ -723,5 +723,5 @@ os.system('cp -r vendor/share/* /app/.heroku/vendor/share')
 """
 os.chdir('/app/.heroku')
     
-botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
+botwyniel = Bot(wl=os.environ['WHITELIST'].split(' '))
 botwyniel.run(os.environ['DISCORD_TOKEN'])
