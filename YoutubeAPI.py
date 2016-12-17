@@ -1,10 +1,11 @@
 import requests
+from os import environ
 
 
 class YoutubeAPI(object):
 
     def __init__(self):
-        self.key = "AIzaSyAAd6n7iBmyuVwzLZEQCS3IxYVz2I8Hl5Q"
+        self.key = environ["YOUTUBE_KEY"]
 
 
     def search_video(self, query):
