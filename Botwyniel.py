@@ -317,7 +317,7 @@ class Bot(discord.Client):
         return username, region.lower()
 
     def author_is_admin(self, message):
-        return message.author.name in self.whitelist
+        return message.author.id in self.whitelist
 
     async def rank(self, message):
         await self.send_typing(message.channel)
