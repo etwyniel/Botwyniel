@@ -15,6 +15,7 @@ from youtube_dl import YoutubeDL
 import discord
 from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
+import overwatch_api
 from discord.client import ConnectionState
 
 
@@ -75,7 +76,8 @@ class Bot(discord.Client):
                          "0!resume": self.resume,
                          "0!leavevoice": self.leave_voice,
                          "0!skip": self.skip_song,
-                         "0!queue": self.list_queue
+                         "0!queue": self.list_queue,
+                         "0!owrank": self.ow_rank
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -110,7 +112,7 @@ class Bot(discord.Client):
     async def on_ready(self):
         print('Logged in as ' + self.user.name)
         self.fetch_aliases()
-        self.loop.create_task(self.check_update())
+        ##self.loop.create_task(self.check_update())
         
         self.list_servers()
         await self.log("Botwyniel initialized")
@@ -284,11 +286,11 @@ class Bot(discord.Client):
         if type(message) == discord.Message:
             message.content = self.truncate(message.content)
             game = discord.Game(name=message.content)
-            self.change_status(game)
+            await self.change_presence(game=game)
             self.current_status = message.content
         else:
             game = discord.Game(name=message)
-            self.change_status(game)
+            await self.change_presence(game=game)
             self.current_status = message
 
     async def avatar(self, message):
@@ -319,7 +321,7 @@ class Bot(discord.Client):
         return username, region.lower()
 
     def author_is_admin(self, message):
-        return message.author.name in self.whitelist
+        return message.author.id in self.whitelist
 
     async def rank(self, message):
         await self.send_typing(message.channel)
@@ -501,6 +503,17 @@ class Bot(discord.Client):
         )
         await self.send_message(message.channel, to_send)
 
+    ##Overwatch commands
+    async def ow_rank(self, message):
+        await self.send_typing(message.channel)
+        query = self.truncate(message.content)
+        if ',' in query:
+            query, region = query.split(", ")
+        else:
+            region = 'eu'
+        rank_image = overwatch_api.get_rank(query, region)
+        await self.send_file(message.channel, rank_image)
+
     async def eightball(self, message):
         """THERE YOU GO VANERI!"""
         outputs = ["Hell no.",
@@ -657,7 +670,11 @@ class Bot(discord.Client):
         await self.send_message(message.channel, "Alias {} successfully removed!".format(alias))
             
     def db_connect(self):
-        db = input("Database url: ")[8:]
+        #db = input("Database url: ")[8:]
+        keys = open(".keys")
+        keys.readline()
+        db = keys.readline()[8:-1]
+        keys.close()
         db_server = db[db.index('@') + 1:db.index('/')]
         db_username = db[:db.index(':')]
         db_password = db[db.index(':') + 1:db.index('@')]
@@ -697,11 +714,13 @@ class Bot(discord.Client):
             await asyncio.sleep(900)
         
 
-if not discord.opus.is_loaded():
-    pass
-    #discord.opus.load_opus('libopus/build/lib/libopus.so.0.5.0')
-
-print('Installing packages')
-
-botwyniel = Bot(wl=["Etwyniel", "Jhysodif"])
-botwyniel.run(input("Token: "))
+try:
+    keys = open(".keys")
+    token = keys.readline()[:-1]
+    keys.close() 
+    botwyniel = Bot(wl=["112836380245114880"])
+    botwyniel.run(token)
+except Exception as e:
+    print(e)
+    botwyniel = Bot(wl=["112836380245114880"])    
+    botwyniel.run(input("Token: "))

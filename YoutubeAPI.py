@@ -5,7 +5,14 @@ from os import environ
 class YoutubeAPI(object):
 
     def __init__(self):
-        self.key = environ["YOUTUBE_KEY"]
+        try:
+            self.key = environ["YOUTUBE_KEY"]
+        except:
+            keys = open(".keys")
+            keys.readline()
+            keys.readline()
+            self.key = keys.readline()[:-1]
+            keys.close()
 
 
     def search_video(self, query):
