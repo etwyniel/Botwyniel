@@ -511,8 +511,11 @@ class Bot(discord.Client):
             query, region = query.split(", ")
         else:
             region = 'eu'
-        rank_image = overwatch_api.get_rank(query, region)
-        await self.send_file(message.channel, rank_image)
+        try:
+            rank_image = overwatch_api.get_rank(query, region)
+            await self.send_file(message.channel, rank_image)
+        except overwatch_api.PlayerNotFound as e:
+            await self.send_message(message.channel, str(e))
 
     async def eightball(self, message):
         """THERE YOU GO VANERI!"""
