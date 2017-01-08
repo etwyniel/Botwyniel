@@ -4,7 +4,7 @@ level=$3
 winrate=$4
 rank=$5
 
-convert avatar.png \( -size 128x128 xc:none -fill white -draw "circle 64,64 64,0" \) -compose copy_opacity -composite avatar.png
+convert avatar.png \( -size 128x128 xc:none -fill white -draw "circle 64,64 64,9" \) -compose copy_opacity -composite avatar.png
 composite -compose atop -geometry +32+40 avatar.png background.png out.png
 composite -compose atop -geometry -32-24 frame.png out.png out.png
 convert rank.png -geometry 50 rank.png
