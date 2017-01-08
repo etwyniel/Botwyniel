@@ -172,7 +172,7 @@ class Bot(discord.Client):
                 url = self.yt.search_video(self.truncate(message.content))
                 info = self.ydl.extract_info(url, download=False)
                 if voice.player is None or not voice.player.is_playing():
-                    await self.send_message(message.channel, "Now playing `{}`".format(info['title']))
+                    await self.send_message(message.channel, "Now playing `{0} Link:{1}`".format(info['title'],url))
                     await self.play_song(voice, url)
                 else:
                     voice.queue.append((url, info['title']))
