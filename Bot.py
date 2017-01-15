@@ -1,4 +1,4 @@
-#!/usr/bin/python3.5
+#!/usr/bin/python3.6
 
 import threading
 from datetime import datetime, date
@@ -17,6 +17,7 @@ from RiotAPI import RiotAPI
 from YoutubeAPI import YoutubeAPI
 import overwatch_api
 from discord.client import ConnectionState
+import schedule
 
 
 class VoiceEntry:
@@ -77,7 +78,8 @@ class Bot(discord.Client):
                          "0!leavevoice": self.leave_voice,
                          "0!skip": self.skip_song,
                          "0!queue": self.list_queue,
-                         "0!owrank": self.ow_rank
+                         "0!owrank": self.ow_rank,
+                         "0!schedule": self.schedule
                          }
         self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
@@ -551,6 +553,25 @@ class Bot(discord.Client):
         to_send = outputs[randrange(len(outputs))]
         await self.send_message(message.channel, to_send)
         await self.log("Answer: " + to_send)
+
+    async def schedule(self, message):
+        _class = self.truncate(message.content)
+        if _class:
+            calendar = schedule.get_calendar(_class)
+        else:
+            calendar = schedule.get_calendar()
+        events = schedule.next_day_events(calendar)
+        if not events:
+            await self.send_message(message.channel, "No upcoming events.")
+            return
+        to_send = ""
+        for event in events:
+            to_send += ("\n" if to_send else "") + event.begin.format(
+                    "**HH:mm** - ") + event.name
+        await self.send_message(message.channel, "",
+                embed=discord.Embed(
+                    title=events[0].begin.format("dddd, MMMM DD"),
+                    description=to_send))
 
     async def execute(self, message):
         if not self.author_is_admin(message):
