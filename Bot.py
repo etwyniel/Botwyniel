@@ -555,6 +555,7 @@ class Bot(discord.Client):
         await self.log("Answer: " + to_send)
 
     async def schedule(self, message):
+        await self.send_typing(message.channel)
         _class = self.truncate(message.content)
         if _class:
             calendar = schedule.get_calendar(_class)
@@ -571,7 +572,8 @@ class Bot(discord.Client):
         await self.send_message(message.channel, "",
                 embed=discord.Embed(
                     title=events[0].begin.format("dddd, MMMM DD"),
-                    description=to_send))
+                    description=to_send,
+                    color=discord.Colour.dark_green()))
 
     async def execute(self, message):
         if not self.author_is_admin(message):
