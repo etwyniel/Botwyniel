@@ -11,6 +11,7 @@ from ctypes.util import find_library
 import requests
 import pymysql
 from youtube_dl import YoutubeDL
+from cleverbot import Cleverbot
 
 import discord
 from RiotAPI import RiotAPI
@@ -46,6 +47,7 @@ class Bot(discord.Client):
         self.play_next_song = asyncio.Event()
         self.name = name
         self.whitelist = wl
+        self.cleverbot = Cleverbot("botwyniel")
         self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
         self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
         self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "JP", "PBE"]
@@ -148,6 +150,9 @@ class Bot(discord.Client):
             if message.content.split(' ')[0] in self.commands:
                 await self.log(str(message.author) + ": " + message.content)
                 await self.commands[message.content.split(" ")[0]](message)
+        elif message.channel.id == "270622650521485312" and message.author.id != "179225702556499968":
+            await self.send_message(message.channel,
+                    self.cleverbot.ask(message.content))
 
     async def pause(self, message):
         for voice in self.voice:
@@ -557,18 +562,24 @@ class Bot(discord.Client):
     async def schedule(self, message):
         await self.send_typing(message.channel)
         _class = self.truncate(message.content)
-        if _class:
-            calendar = schedule.get_calendar(_class)
-        else:
-            calendar = schedule.get_calendar()
-        events = schedule.next_day_events(calendar)
+        week = datetime.now().isocalendar()[1] + 122
+        for i in range(3):        
+            if _class:
+                calendar = schedule.get_calendar(_class, week)
+            else:
+                calendar = schedule.get_calendar("INFOS2INT1-2", week)
+            events = schedule.next_day_events(calendar)
+            if not events:
+                week += 1
+            else:
+                break
         if not events:
-            await self.send_message(message.channel, "No upcoming events.")
+            await self.send_message(message.channel, "No upcoming events for the week.")
             return
         to_send = ""
         for event in events:
             to_send += ("\n" if to_send else "") + event.begin.format(
-                    "**HH:mm** - ") + event.name
+                    "**HH:mm** - ") + event.name + ' - ' + event.location
         await self.send_message(message.channel, "",
                 embed=discord.Embed(
                     title=events[0].begin.format("dddd, MMMM DD"),
@@ -739,7 +750,7 @@ class Bot(discord.Client):
             conn.close()
             await asyncio.sleep(900)
         
-
+"""
 try:
     keys = open(".keys")
     token = keys.readline()[:-1]
@@ -749,4 +760,4 @@ try:
 except Exception as e:
     print(e)
     botwyniel = Bot(wl=["112836380245114880"])    
-    botwyniel.run(input("Token: "))
+    botwyniel.run(input("Token: "))"""
