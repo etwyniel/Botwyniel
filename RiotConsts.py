@@ -1,16 +1,21 @@
 URL = {
-    "base": "https://{proxy}.api.pvp.net/api/lol/{region}/{url}",
-    "summoner_by_name": "v{version}/summoner/by-name/{names}",
-    "league": "v{version}/league/by-summoner/{summonerId}/entry",
-    "current_game": "https://{proxy}.api.pvp.net/observer-mode/rest/consumer/getSpectatorGameInfo/{platformId}/{summonerId}",
-    "free_champions": "v1.2/champion",
+    #"base": "https://{proxy}.api.pvp.net/api/lol/{region}/{url}",
+    "base": "https://{proxy}.api.riotgames.com/lol/{url}",
+    #"summoner_by_name": "v{version}/summoner/by-name/{names}",
+    "summoner_by_name": "summoner/v{version}/summoners/by-name/{names}",
+    #"league": "v{version}/league/by-summoner/{summonerId}/entry",
+    "league": "league/v{version}/leagues/by-summoner/{summonerId}",
+    #"current_game": "https://{proxy}.api.pvp.net/observer-mode/rest/consumer/getSpectatorGameInfo/{platformId}/{summonerId}",
+    "current_game": "spectator/v{version}/active-games/by-summoner/{summonerId}",
+    "free_champions": "platform/v{version}/champions?freeToPlay=true",
     "statistics_summary": "v{version}/stats/by-summoner/{summoner_id}/summary"
 }
 
 API_VERSIONS = {
     "summoner": "3",
     "league": "3",
-    "statistics": "1.3"
+    "free_champions": "3",
+    "current_game": "3"
 }
 
 REGIONS = {
@@ -18,18 +23,18 @@ REGIONS = {
 }
 
 PLATFORM_IDS = {
-    "euw": "EUW1",
-    "br": "BR1",
-    "eune": "EUN1",
-    "kr": "KR",
-    "lan": "LA1",
-    "las": "LA2",
-    "na": "NA1",
-    "oce": "OC1",
-    "tr": "TR1",
-    "ru": "RU",
-    "pbe": "PBE1",
-    "jp": "JP"
+    "euw": "euw1",
+    "br": "br1",
+    "eune": "eun1",
+    "kr": "kr",
+    "lan": "la1",
+    "las": "la2",
+    "na": "na1",
+    "oce": "oc1",
+    "tr": "tr1",
+    "ru": "ru",
+    "pbe": "pbe1",
+    "jp": "jp"
 }
 
 CHAMPIONS_BY_ID = {
@@ -168,7 +173,8 @@ CHAMPIONS_BY_ID = {
     427: 'Ivern',
     164: 'Camille',
     498: 'Xayah',
-    497: 'Rakan'
+    497: 'Rakan',
+    141: 'Kayn'
 }
 
 CHAMPION_IDS = [
@@ -307,5 +313,6 @@ CHAMPION_IDS = [
     ['Ivern', 427],
     ['Camille', 164],
     ['Xayah', 498],
-    ['Rakan', 497]
+    ['Rakan', 497],
+    ['Kayn', 141]
 ]

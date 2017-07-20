@@ -12,16 +12,10 @@ class RiotAPI(object):
         for key, value in params.items():
             if key not in args:
                 args[key] = value
-        print(Consts.URL["base"].format(proxy=self.region, region=self.region, url=api_url))
+        print(Consts.URL["base"].format(proxy=Consts.PLATFORM_IDS[self.region], url=api_url))
         response = requests.get(
-            Consts.URL["base"].format(
-                proxy=self.region,
-                region=self.region,
-                url=api_url
-                ),
-            params=args
-            )
-
+            Consts.URL["base"].format(proxy=Consts.PLATFORM_IDS[self.region], url=api_url),
+            params=args)
         a = response
 
         return response.json()
@@ -34,16 +28,18 @@ class RiotAPI(object):
         return self._request(api_url)
 
     def get_summoner_rank(self, name):
-        summonerId = self.get_summoner_by_name(name)[name.lower()]["id"]
+        summonerId = self.get_summoner_by_name(name)["id"]
         api_url = Consts.URL["league"].format(
             version=Consts.API_VERSIONS["league"],
             summonerId=summonerId
             )
         league = self._request(api_url)
-        tier = league[str(summonerId)][0]["tier"]
-        division = league[str(summonerId)][0]["entries"][0]["division"]
-        lp = league[str(summonerId)][0]["entries"][0]["leaguePoints"]
-        winrate = self.get_winrate(name)
+        tier = league[0]["tier"]
+        division = league[0]["entries"][0]["rank"]
+        lp = league[0]["entries"][0]["leaguePoints"]
+        wins = league[0]["entries"][0]["wins"]
+        winrate = (wins * 100) // (wins + league[0]["entries"][0]["losses"])
+        #winrate = self.get_winrate(name)
         return [tier, division, lp, winrate]
 
     def get_summoner_level(self, name):
@@ -51,29 +47,26 @@ class RiotAPI(object):
             version=Consts.API_VERSIONS["summoner"],
             names=name
             )
-        return self._request(api_url)[name.lower()]["summonerLevel"]
+        return self._request(api_url)["summonerLevel"]
 
     def get_game_ranks(self, name, params={}):
-        summonerId = self.get_summoner_by_name(name)[name.lower()]["id"]
+        summonerId = self.get_summoner_by_name(name)["id"]
         args = {"api_key": self.api_key}
         for key, value in params.items():
             if key not in args:
                 args[key] = value
-        response = requests.get(
-            Consts.URL["current_game"].format(
-                proxy=self.region,
-                platformId=Consts.PLATFORM_IDS[self.region],
-                summonerId=summonerId
-                ),
-            params=args
-            )
+        api_url = Consts.URL["current_game"].format(
+                version=Consts.API_VERSIONS["current_game"],
+                summonerId=summonerId)
+        response = self._request(api_url)
 
-        if str(response) == "<Response [200]>":
+        """if str(response) == "<Response [200]>":
             print("Request OK.")
         elif str(response) == "<Response [404]>":
             print("Player not in game.")
             return False
-        game = response.json()
+        game = response.json()"""
+        game = response
         players = {}
         playerNames = []
         playerChamps = []
