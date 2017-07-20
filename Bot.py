@@ -5,9 +5,6 @@ from datetime import datetime, date
 from threading import Thread
 from random import randrange
 import asyncio
-import subprocess
-import os
-from ctypes.util import find_library
 import requests
 import pymysql
 from youtube_dl import YoutubeDL
@@ -19,13 +16,9 @@ from YoutubeAPI import YoutubeAPI
 import overwatch_api
 from discord.client import ConnectionState
 import schedule
+import asynchttpserver
+from voice_entry import VoiceEntry
 
-
-class VoiceEntry:
-    def __init__(self, message, song):
-        self.requester = message.author
-        self.channel = message.channel
-        self.song = song
 
 class Bot(discord.Client):
     """
@@ -35,11 +28,13 @@ class Bot(discord.Client):
     
     def __init__(self, name="Botwyniel", wl=[], **kwargs):
         super().__init__()
+        self.otherloop = None
         self.voice = []
         self.player = None
-        self.ydl = YoutubeDL()
+        self.ydl = YoutubeDL({"socket_timeout": 5})
         self.init_time = datetime.now()
         self.servs = {}
+        self.servers_by_id = {}
         self.channels = {}
         self.aliases = {}
         self.yt = YoutubeAPI()
@@ -49,7 +44,9 @@ class Bot(discord.Client):
         self.whitelist = wl
         self.cleverbot = Cleverbot("botwyniel")
         self.steam_key = "7079BC4D125AF8E3C3D362F8A98235CC"
-        self.riot_key = "88e79b8e-39c5-45f6-b2c5-c5606e6f37c5"
+        with open(".keys") as f:
+            self.riot_key = f.readlines()[3][:-1]
+            print(self.riot_key)
         self.regions = ["BR", "EUNE", "EUW", "KR", "LAN", "LAS", "NA", "OCE", "TR", "RU", "JP", "PBE"]
         self.commands = {"0!rank": self.rank,
                          "0!gameranks": self.gameranks,
@@ -81,9 +78,11 @@ class Bot(discord.Client):
                          "0!skip": self.skip_song,
                          "0!queue": self.list_queue,
                          "0!owrank": self.ow_rank,
-                         "0!schedule": self.schedule
+                         "0!schedule": self.schedule,
+                         "0!music": self.send_music_url
                          }
-        self.commands_help = {"0!rank": "Returns the rank of the specified player. If your Discord username is the "
+        self.commands_help = {"0!music": "Control Botwyniel from your browser!",
+                              "0!rank": "Returns the rank of the specified player. If your Discord username is the "
                                   "same as your summoner name, or if you have set an alias using 0!setalias, you can use 0!rank me, *region* or 0!rank instead.\n"
                                   "Syntax: `0!rank username (, region)`    -- region is optional if the player you are looking is on EUW",
                               "0!gameranks": "Returns the ranks of the players in the game the specified player is "
@@ -116,7 +115,7 @@ class Bot(discord.Client):
     async def on_ready(self):
         print('Logged in as ' + self.user.name)
         self.fetch_aliases()
-        ##self.loop.create_task(self.check_update())
+        self.loop.create_task(self.check_update())
         
         self.list_servers()
         await self.log("Botwyniel initialized")
@@ -131,6 +130,7 @@ class Bot(discord.Client):
                 self.voice.append(await self.join_voice_channel(c))
                 self.voice[-1].player = None
                 self.voice[-1].queue = []
+                self.voice[-1].current = None
 
     async def on_message(self, message):
         """if message.content == '0!play':
@@ -157,13 +157,17 @@ class Bot(discord.Client):
     async def pause(self, message):
         for voice in self.voice:
             if voice.server.id == message.server.id and voice.player != None and voice.player.is_playing():
+                voice.current.position += voice.player.loops * voice.player.delay
                 voice.player.pause()
+                asynchttpserver.send_message(message.server.id, "MEDIA_PAUSED")
                 
     async def resume(self, message):
         for voice in self.voice:
             if voice.server.id == message.server.id and voice.player != None and not voice.player.is_playing():
                 try:
-                    voice.player.resume()
+                    voice.player = voice.create_ffmpeg_player(voice.current.url, before_options="-ss " + str(voice.current.position))
+                    voice.player.start()
+                    asynchttpserver.send_message(message.server.id, "MEDIA_PLAYING")
                 except:
                     self.send_message(message.channel, 'No song paused.')
                     
@@ -174,18 +178,47 @@ class Bot(discord.Client):
 
     async def queue_song(self, message):
         await self.send_typing(message.channel)
+        if message.server.voice_client == None:
+            await self.send_message(message.channel, "No voice client on this server (use 0!joinvoice).")
+            return
+        url, info = self.get_url(self.truncate(message.content))
+        if url == None:
+            await self.send_message(message.channel, "Song not found.")
+        entry = VoiceEntry(message.server, info["title"], url, info["duration"], info["thumbnail"] if "thumbnail" in info.keys() else '')
+        voice = message.server.voice_client
+        if voice.player == None or not voice.player.is_playing():
+            await self.play_song(voice, entry)
+        else:
+            voice.queue.append(entry)
+            await self.send_message(message.channel, "Queued `{}`".format(info["title"]))
+            asynchttpserver.send_message(message.server.id, "MEDIA_QUEUED \n" + str(entry.duration) + "\n" + entry.title + '\n' + entry.thumbnail_url)
+        """
         for voice in self.voice:
             if voice.server.id == message.server.id:
                 url = self.yt.search_video(self.truncate(message.content))
                 info = self.ydl.extract_info(url, download=False)
+                audio_url = ""
+                abr = 0
+                for f in info["formats"]:
+                    if f["vcodec"] == 'none':
+                        if f["abr"] == 128:
+                            audio_url = f["url"]
+                            abr = 128
+                            break
+                        if f["abr"] > abr:
+                            audio_url = f["url"]
+                            abr = f["abr"]
+                entry = VoiceEntry(message.server, info["title"], audio_url, info["duration"], info["thumbnail"], message)
                 if voice.player is None or not voice.player.is_playing():
-                    await self.send_message(message.channel, "Now playing `{0} Link:{1}`".format(info['title'],url))
-                    await self.play_song(voice, url)
+                    #await self.send_message(message.channel, "Now playing `{0} Link:{1}`".format(info['title'],url))
+                    await self.play_song(voice, entry)
                 else:
-                    voice.queue.append((url, info['title']))
+                    voice.queue.append(entry)
                     await self.send_message(message.channel, "Queued `{}`".format(info['title']))
+                    asynchttpserver.send_message(message.server.id, "MEDIA_QUEUED \n" + str(entry.duration) + "\n" + entry.title + '\n' + entry.thumbnail_url)
                 return
         await self.send_message(message.channel, 'No voice client on this server (use 0!joinvoice).')
+        """
         
     async def list_queue(self, message):
         await self.send_typing(message.channel)
@@ -194,22 +227,25 @@ class Bot(discord.Client):
                 if voice.queue:
                     out = "*Playlist:*"
                     for i in range(len(voice.queue)):
-                        out += "\n" + str(i + 1) + ". `" + voice.queue[i][1] + "`"
+                        out += "\n" + str(i + 1) + ". `" + voice.queue[i].title + "`"
                     await self.send_message(message.channel, out)
                 else:
                     await self.send_message(message.channel, "Nothing queued.")
                 return
         await self.send_message(message.channel, "No voice client on this server.")
             
-    
-    async def play_song(self, voice, url):
-        voice.player = await voice.create_ytdl_player(url)
+    async def play_song(self, voice, entry):
+        #voice.player = await voice.create_ytdl_player(url)
+        voice.player = voice.create_ffmpeg_player(entry.url)
         voice.player.start()
-        #await self.send_message(message.channel, 'Now playing `' + voice.player.title + '`')
+        voice.current = entry
+        if entry.channel != None:
+            await self.send_message(entry.channel, 'Now playing `' + entry.title + '`')
         while not voice.player.is_done():
             await asyncio.sleep(1)
-        if voice.queue:
-            next_song = voice.queue.pop(0)[0]
+        if hasattr(voice, "queue") and voice.queue:
+            next_song = voice.queue.pop(0)
+            asynchttpserver.send_message(entry.server.id, "MEDIA_NEXT");
             await self.play_song(voice, next_song)
         return
 	
@@ -241,6 +277,7 @@ class Bot(discord.Client):
         for a in self.servers:
             #print(a.name)
             self.servs[a.name] = a
+            self.servers_by_id[a.id] = a
             ch_dict = {}
             for channel in a.channels:
                 ch_dict[channel.name] = channel
@@ -620,6 +657,7 @@ class Bot(discord.Client):
     async def help(self, message):
         if self.truncate(message.content) == "":
             await self.send_message(message.author, "The available commands are:\n"
+            "**0!music**\n"
             "**0!rank** *username*, *region*\*\n"
             "**0!gameranks** *username*, *region*\*\n"
             "**0!setalias** *username*, *region*\*\n"
@@ -692,6 +730,29 @@ class Bot(discord.Client):
         conn.close()
         self.aliases[id] = [alias, region]
         await self.send_message(message.channel, "Alias {} successfully set!".format(alias))
+
+    async def send_music_url(self, message):
+        await self.send_message(message.channel, "http://botwyniel.ddns.net/" + message.server.id)
+
+    def get_url(self, query):
+        if not query.startswith("http"):
+            query = self.yt.search_video(query)
+        try:
+            info = self.ydl.extract_info(query, download=False)
+            abr = 0
+            url = None
+            for form in info["formats"]:
+                if "abr" in form.keys() and form["abr"] > abr:
+                    if form["abr"] >= 96:
+                        return form["url"], info
+                    abr = form["abr"]
+                    url = form["url"]
+                else:
+                    return form["url"]
+            return url, info
+        except:
+            return None, None
+
         
     async def remove_alias(self, message):
         conn = self.db_connect()

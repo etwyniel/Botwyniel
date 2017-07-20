@@ -8,8 +8,8 @@ URL = {
 }
 
 API_VERSIONS = {
-    "summoner": "1.4",
-    "league": "2.5",
+    "summoner": "3",
+    "league": "3",
     "statistics": "1.3"
 }
 
@@ -166,7 +166,9 @@ CHAMPIONS_BY_ID = {
     163: 'Taliyah',
     240: 'Kled',
     427: 'Ivern',
-    164: 'Camille'
+    164: 'Camille',
+    498: 'Xayah',
+    497: 'Rakan'
 }
 
 CHAMPION_IDS = [
@@ -303,5 +305,7 @@ CHAMPION_IDS = [
     ['Taliyah', 163],
     ['Kled', 240],
     ['Ivern', 427],
-    ['Camille', 164]
+    ['Camille', 164],
+    ['Xayah', 498],
+    ['Rakan', 497]
 ]

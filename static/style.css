@@ -1,0 +1,183 @@
+body {
+	/*background-image: url("tweed.png");
+	background-repeat: repeat;*/
+}
+
+ul {
+	list-style-type: none;
+	list-style: none;
+	padding-left: 0;
+}
+
+* {
+	font-family: "Iosevka Term", monospace;
+}
+
+a:visited, a {
+	color: #fff;
+	text-decoration: none;
+}
+
+.connected {
+	color: #fff !important;
+	/*text-decoration: underline !important;
+	background: #42464d;*/
+}
+
+.media-control-button {
+	font-size: 2em;
+	width: 1.8em;
+	height: 1.8em;
+	text-align: center;
+}
+
+.join-channel-link, .join-channel-link:visited {
+	color: inherit;
+	text-decoration: none;
+	border-radius: 10px;
+	padding: 0.2em;
+}
+
+.join-channel-link:hover {
+	color: #fff;
+}
+
+#thumbnail  {
+	width: 20em;
+}
+
+tr {
+	text-align: left;
+	padding-right: 1em;
+}
+
+td:nth-of-type(2), th:nth-of-type(2) {
+	width: 100%;
+}
+
+table {
+	width: 100%;
+	margin: 0;
+}
+
+#header {
+	margin: auto;
+	width: 100%;
+	text-align: center;
+	box-shadow: 2px -1px 5px 2px black;
+	position: fixed;
+	top: 0;
+	left: 0;
+	/*z-index: -1;*/
+	background: #36393e;
+	color: #fff;
+	padding-top: 1em;
+	padding-bottom: 1em;
+}
+
+#menu-icon {
+	position: absolute;
+	top: 0;
+	left: 0;
+	padding: 20px;
+	width: 2em;
+}
+
+#name-and-avatar {
+	font-size: 20pt;
+}
+
+#botwyniel-avatar {
+	overflow: hidden;
+	border-radius: 50%;
+	vertical-align: middle;
+	height: 1.5em;
+}
+
+#darken {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	display: none;
+	transition: 0.3s;
+	z-index: 2:
+}
+
+#server {
+	position: fixed;
+	width: 15em;
+	height: 100vh;
+	background: #2f3136;
+	/*color: #5d6f7a;*/
+	color: #72767d;
+	top: 0;
+	left: -45%;
+	transition: 0.3s;
+	display: none;
+	box-shadow: 2px 0px 20px black;
+	z-index: 3;
+	padding: 1em;
+}
+
+#media-controls {
+	position: relative;
+	top: 8em;
+	/*z-index: -1;*/
+}
+
+#playlist {
+	border: 1px solid #588ede;
+	border-radius: 5px;
+	overflow: hidden;
+	transition: 0.5s;
+	height: 3.3em;
+	margin-bottom: 1em;
+}
+
+#playlist-header {
+	background: #588ede;
+	padding-left: 1em;
+	padding-bottom: 0.3em;
+	padding-top: 0.3em;
+	color: #fff;
+}
+
+th, td {
+	padding-left: 0.2em;
+	padding-right; 0.2em;
+}
+
+th {
+	border-bottom: 1px solid #588ede;
+}
+
+i.media-control-button {
+	font-size: 2em;
+	margin: 0.1em;
+	cursor: pointer;
+}
+
+#status-info {
+	position: relative;
+	top: 6em;
+	border: 1px solid #588ede;
+	border-radius: 5px;
+}
+
+i.fa-info-circle {
+	color: #fff;
+}
+
+#info-header {
+	background: #588ede;
+	padding-left: 0.5em;
+	font-size: 15pt;
+}
+
+#info-message {
+	margin-left: 0.5em;
+	margin-top: 0.2em;
+	margin-bottom: 0.2em;
+}

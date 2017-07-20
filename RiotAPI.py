@@ -12,6 +12,7 @@ class RiotAPI(object):
         for key, value in params.items():
             if key not in args:
                 args[key] = value
+        print(Consts.URL["base"].format(proxy=self.region, region=self.region, url=api_url))
         response = requests.get(
             Consts.URL["base"].format(
                 proxy=self.region,

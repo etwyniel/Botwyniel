@@ -1,0 +1,124 @@
+﻿## -*- coding: utf-8 -*-
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Botwyniel</title>
+		<link rel="shortcut icon" href="static/favicon.png" />
+		<link rel="stylesheet" type="text/css" href="static/style.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+		<script src="static/script.js"></script>
+		<script>
+			var server_id = '${server.id}';
+			var channelsById = {};
+			var connectedChannel;
+			var playing = ${"true" if voice != None and player != None and player.is_playing() else "false"}
+			window.onload = function() {
+				% for channel in server.channels:
+					channelsById['${channel.id}'] = document.getElementById("${channel.id}");
+				% endfor
+				connectedChannel = ${('document.getElementById("' + voice.channel.id + '");') if voice != None else "null"}
+			}
+			var ws = new WebSocket("ws://" + window.location.host + "/ws/${server.id}");
+			ws.onmessage = onMessage;
+		</script>
+	</head>
+	<body>
+		<div id="header">
+			<img id="menu-icon" src="static/menu.svg"/>
+			<span id="name-and-avatar"><a href="/">
+				<img id="botwyniel-avatar" src="static/botwyniel.png"/>
+				<b>Botwyniel</b>
+			</a></span>
+			<p hidden>A discord bot written in python using discord.py</p>
+		</div>
+		<div id="server">
+			<%doc><% voice = server.voice_client %></%doc>
+			<h2 style="color: #fff">${server.name}</h2>
+			<b style="font-size: 10pt">VOICE CHANNELS</b>
+			<ul>
+				% for channel in list(server.channels):
+					% if str(channel.type) == 'voice':
+					<li>
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" class="colorDefaultVoice-1x4dE1 icon-3tVjnl">
+							<path class="foreground-2zy1hc" fill="currentColor" d="M9.33333333,2 L9.33333333,3.37333333 C11.26,3.94666667 12.6666667,5.73333333 12.6666667,7.84666667 C12.6666667,9.96 11.26,11.74 9.33333333,12.3133333 L9.33333333,13.6933333 C12,13.0866667 14,10.7 14,7.84666667 C14,4.99333333 12,2.60666667 9.33333333,2 L9.33333333,2 Z M11,7.84666667 C11,6.66666667 10.3333333,5.65333333 9.33333333,5.16 L9.33333333,10.5133333 C10.3333333,10.04 11,9.02 11,7.84666667 L11,7.84666667 Z M2,5.84666667 L2,9.84666667 L4.66666667,9.84666667 L8,13.18 L8,2.51333333 L4.66666667,5.84666667 L2,5.84666667 L2,5.84666667 Z"></path>
+						</svg>
+						<a id="${channel.id}" ${"class='join-channel-link" + (" connected'" if voice != None and voice.channel == channel else "'")} 
+							onclick="joinChannel('${channel.id}');" href="#">${channel.name}</a>
+					</li>
+					% endif
+				% endfor
+			</ul>
+			<p id="status-message">Botwyniel is ${'' if voice != None else "not"}
+				connected to a voice channel on this server.</p>
+		</div>
+		<div id="media-controls"${" hidden" if voice == None else ""}>
+			<img id="thumbnail" src="${current.thumbnail_url if hasattr(voice, 'current') and voice != None and current != None else ''}"></img>
+			<p id="now-playing">Now playing: ${current.title if voice != None and hasattr(voice, 'current') and current != None else ""}</p>
+			<progress id="song-progress-bar" 
+			% if voice != None and current != None and voice.player != None:
+				value="${int(player.delay * player.loops) + current.position}" 
+				max="${current.duration}"
+			% else:
+				value="0" max="0"
+			% endif
+			></progress>
+			<i class="fa fa-backward media-control-button" id="previous-button"></i>
+			<!--button id="previous-button" class="media-control-button">⏪</button-->
+			<!--button id="pause-play" class="media-control-button" onclick="pausePlayButtonHandler();"-->
+			<%doc>	${"⏸" if voice != None and player != None and player.is_playing() else "▶️"}</%doc>
+			<!--/button-->
+			<i class="fa fa-${'pause' if voice != None and player != None and player.is_playing() else 'play'} media-control-button" id="pause-play-button"></i>
+			<!--button id="next-button" class="media-control-button">⏩</button-->
+			<i class="fa fa-forward media-control-button" id="next-button"></i>
+			<input id="request-input" placeholder="add song..."></input>
+			<div id="playlist" style="height: ${3.3 + (0 if voice == None or not hasattr(voice, 'queue') or voice.queue == None else 1.38 * len(voice.queue))}em">
+				<div id="playlist-header">
+					<b>Queue</b>
+				</div>
+			<table cellspacing="0">
+				<thead>
+					<tr>
+						<th>#</th>
+						<th>Title</th>
+						<th>Duration</th>
+					</tr>
+				</thead>
+				<tbody id="queue">
+					% if voice != None and hasattr(voice, "queue"):
+						% for song in voice.queue:
+							<tr class="playlist-item" duration="${song.duration}" title="${song.title}" thumbnail="${song.thumbnail_url}">
+								<td>${loop.index + 1}</td>
+								<td>${song.title}</td>
+								<td>${(str(song.duration // 60) + "m" if song.duration > 60 else "") + "{:02d}s".format(song.duration % 60)}</td>
+							</tr>
+						% endfor
+					% endif
+				</tbody>
+			</table>
+			</div>
+			<%doc>
+			<ol id="queue">
+				Queue:
+				% if voice != None:
+					% for song in voice.queue:
+					<li class="playlist-item" duration="${song.duration}" title="${song.title}" thumbnail="${song.thumbnail_url}">
+							${(str(song.duration // 60) + "m" if song.duration > 60 else "") + "{:02d}s".format(song.duration % 60)} - ${song.title}
+						</li>
+					% endfor
+				% endif
+			</ol>
+			</%doc>
+		</div>
+		<div id="status-info"${" hidden" if voice != None else ""}>
+			<div id="info-header">
+				<i class="fa fa-info-circle"> Info</i>
+			</div>
+			<p id="info-message">
+				Botwyniel is not connected to a voice channel on this server.<br>
+				To get started, click <i class="fa fa-bars"></i> to select a channel to play music.
+			</p>
+		</div>
+		<div id="darken"></div>
+	</body>
+</html>
